@@ -32,6 +32,10 @@ env:
 jobs:
   build:
     runs-on: debian
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
 
     - name: Initialization environment
       env:
