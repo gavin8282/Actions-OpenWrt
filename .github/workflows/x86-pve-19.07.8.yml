@@ -72,7 +72,7 @@ jobs:
       run: cd openwrt && rm -rf ./target/linux/generic/hack-4.14/953-net-patch-linux-kernel-to-support-shortcut-fe.patch && ./scripts/feeds update -a
 
     - name: Install feeds
-      run: cd openwrt && rm -rf ./feeds/gavin/shortcut-fe && rm -rf ./feeds/gavin/luci-app-turboacc-1907 ./scripts/feeds install -a  
+      run: cd openwrt && rm -rf ./feeds/gavin/shortcut-fe && rm -rf ./feeds/gavin/luci-app-turboacc-1907 && ./scripts/feeds install -a  
 
     - name: Load custom configuration
       run: |
