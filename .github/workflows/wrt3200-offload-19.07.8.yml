@@ -16,7 +16,7 @@ on:
     inputs:
       ssh:
         description: 'SSH connection to Actions'
-        required: false
+        required: true
         default: 'false'
 
 env:
@@ -69,10 +69,10 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
+      run: cd openwrt && rm -rf ./target/linux/generic/hack-4.14/953-net-patch-linux-kernel-to-support-shortcut-fe.patch && ./scripts/feeds update -a
 
     - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
+      run: cd openwrt && rm -rf ./feeds/gavin/shortcut-fe && rm -rf ./feeds/gavin/x86-pve-19.07.8.config &&./scripts/feeds install -a  
 
     - name: Load custom configuration
       run: |
