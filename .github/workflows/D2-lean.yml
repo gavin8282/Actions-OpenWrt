@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: WRT3200-19.07.8-offload
+name: D2-lean
 
 on:
   repository_dispatch:
@@ -20,10 +20,10 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://code.aliyun.com/openwrt/openwrt.git
+  REPO_URL: https://github.com/coolsnowwolf/lede.git
   REPO_BRANCH: master
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: wrt3200-offload-19.07.8.config
+  FEEDS_CONF: lean.feeds.conf.default
+  CONFIG_FILE: D2-lean.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: true
@@ -69,10 +69,10 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: Update feeds
-      run: cd openwrt && rm -rf ./target/linux/generic/hack-4.14/953-net-patch-linux-kernel-to-support-shortcut-fe.patch && ./scripts/feeds update -a
+      run: cd openwrt && ./scripts/feeds update -a
 
     - name: Install feeds
-      run: cd openwrt && rm -rf ./feeds/gavin/shortcut-fe && rm -rf ./feeds/gavin/x86-pve-19.07.8.config && ./scripts/feeds install -a  
+      run: cd openwrt && ./scripts/feeds install -a  
 
     - name: Load custom configuration
       run: |
