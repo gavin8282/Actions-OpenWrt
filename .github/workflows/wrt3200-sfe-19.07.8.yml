@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: WRT3200-sfe-19.07.8
+name: WRT3200-19.07.8-sfe
 
 on:
   repository_dispatch:
