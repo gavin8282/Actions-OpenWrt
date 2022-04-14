@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: WRT3200-19.07.8-sfe
+name: g-wrt3200-21.02.2-new
 
 on:
   repository_dispatch:
@@ -16,14 +16,14 @@ on:
     inputs:
       ssh:
         description: 'SSH connection to Actions'
-        required: false
+        required: true
         default: 'false'
 
 env:
   REPO_URL: https://code.aliyun.com/openwrt/openwrt.git
-  REPO_BRANCH: master
+  REPO_BRANCH: 21.02
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: wrt3200-sfe-19.07.8.config
+  CONFIG_FILE: g-wrt3200-21.02.2-new.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: true
@@ -69,10 +69,7 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
-
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
+      run: cd openwrt && rm -rf ./target/linux/generic/hack-4.14/953-net-patch-linux-kernel-to-support-shortcut-fe.patch && ./scripts/feeds update -a
 
     - name: Load custom configuration
       run: |
