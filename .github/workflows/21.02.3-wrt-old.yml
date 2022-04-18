@@ -23,7 +23,7 @@ env:
   REPO_URL: https://code.aliyun.com/openwrt/openwrt.git
   REPO_BRANCH: g-21.02
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: g-wrt3200-21.02-old.config
+  CONFIG_FILE: 21.02.2-wrt3200-old.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
