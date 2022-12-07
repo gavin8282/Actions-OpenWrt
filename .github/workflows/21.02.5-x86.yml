@@ -20,7 +20,7 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://codeup.aliyun.com/gavin/openwrt/openwrt.git
+  REPO_URL: https://code.aliyun.com/openwrt/openwrt.git
   REPO_BRANCH: 21.02-lite
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 21.02.5-x86-lite.config
