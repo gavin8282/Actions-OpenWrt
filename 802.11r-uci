@@ -1,6 +1,8 @@
 #802.11 uci
 #Wrt-2.4G
-
+uci set wireless.@wifi-iface[1].ieee80211k=1
+uci set wireless.@wifi-iface[1].ieee80211v=1
+uci set wireless.@wifi-iface[1].bss_transition=1
 uci set wireless.@wifi-iface[1].ieee80211r='1'
 uci set wireless.@wifi-iface[1].mobility_domain='1dd1'
 uci set wireless.@wifi-iface[1].pmk_r1_push='1'
@@ -10,7 +12,9 @@ uci set wireless.@wifi-iface[1].r0kh='60:38:E0:B2:98:F1,6038E0B298F1,c7ea2562199
 uci set wireless.@wifi-iface[1].r1kh='60:38:E0:B2:98:F1,60:38:E0:B2:98:F1,c7ea256219974ac5c1c2aba076d6006e 20:76:93:4C:DD:22,20:76:93:4C:DD:22,c7ea256219974ac5c1c2aba076d6006e'
 
 #Wrt-5G
-
+uci set wireless.@wifi-iface[0].ieee80211k=1
+uci set wireless.@wifi-iface[0].ieee80211v=1
+uci set wireless.@wifi-iface[0].bss_transition=1
 uci set wireless.@wifi-iface[0].ieee80211r='1'
 uci set wireless.@wifi-iface[0].mobility_domain='1dd1'
 uci set wireless.@wifi-iface[0].pmk_r1_push='1'
@@ -20,6 +24,9 @@ uci set wireless.@wifi-iface[0].r0kh='60:38:E0:B2:98:F2,6038E0B298F2,c7ea2562199
 uci set wireless.@wifi-iface[0].r1kh='60:38:E0:B2:98:F2,60:38:E0:B2:98:F2,c7ea256219974ac5c1c2aba076d6006e 20:76:93:4C:DD:24,20:76:93:4C:DD:24,c7ea256219974ac5c1c2aba076d6006e'
 
 #D2-2.4G
+uci set wireless.@wifi-iface[0].ieee80211k=1
+uci set wireless.@wifi-iface[0].ieee80211v=1
+uci set wireless.@wifi-iface[0].bss_transition=1
 uci set wireless.@wifi-iface[0].ieee80211r='1'
 uci set wireless.@wifi-iface[0].mobility_domain='1dd1'
 uci set wireless.@wifi-iface[0].pmk_r1_push='1'
@@ -29,6 +36,9 @@ uci set wireless.@wifi-iface[0].r0kh='60:38:E0:B2:98:F1,6038E0B298F1,c7ea2562199
 uci set wireless.@wifi-iface[0].r1kh='60:38:E0:B2:98:F1,60:38:E0:B2:98:F1,c7ea256219974ac5c1c2aba076d6006e 20:76:93:4C:DD:22,20:76:93:4C:DD:22,c7ea256219974ac5c1c2aba076d6006e'
 
 #D2-5G
+uci set wireless.@wifi-iface[1].ieee80211k=1
+uci set wireless.@wifi-iface[1].ieee80211v=1
+uci set wireless.@wifi-iface[1].bss_transition=1
 uci set wireless.@wifi-iface[1].ieee80211r='1'
 uci set wireless.@wifi-iface[1].mobility_domain='1dd1'
 uci set wireless.@wifi-iface[1].pmk_r1_push='1'
