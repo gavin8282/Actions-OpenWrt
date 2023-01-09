@@ -21,12 +21,12 @@ on:
 
 env:
   REPO_URL: https://github.com/4860575/g-openwrt.git
-  REPO_BRANCH: main
+  REPO_BRANCH: 
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 21.02.5-wrt3200-wpad-openssl-tiny.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
+  UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: false
   UPLOAD_WETRANSFER: false
@@ -90,7 +90,7 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        make download -j8
+        make download -j$(nproc)
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
     - name: Compile the firmware
