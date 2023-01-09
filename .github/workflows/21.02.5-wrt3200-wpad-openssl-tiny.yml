@@ -20,8 +20,8 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://github.com/4860575/g-openwrt.git
-  REPO_BRANCH: 
+  REPO_URL: https://github.com/4860575/g-openwrt
+  REPO_BRANCH: main
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 21.02.5-wrt3200-wpad-openssl-tiny.config
   DIY_P1_SH: diy-part1.sh
