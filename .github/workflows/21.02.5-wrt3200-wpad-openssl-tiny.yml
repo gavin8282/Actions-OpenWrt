@@ -20,8 +20,8 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://code.aliyun.com/openwrt/openwrt.git
-  REPO_BRANCH: 21.02
+  REPO_URL: https://github.com/4860575/g-openwrt.git
+  REPO_BRANCH: main
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 21.02.5-wrt3200-wpad-openssl-tiny.config
   DIY_P1_SH: diy-part1.sh
@@ -152,8 +152,8 @@ jobs:
       run: |
         echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
         touch release.txt
-        [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
-        [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
+        [ $UPLOAD_COWTRANSFER = true ] && echo "???? [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
+        [ $UPLOAD_WETRANSFER = true ] && echo "???? [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
         echo "::set-output name=status::success"
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v1
