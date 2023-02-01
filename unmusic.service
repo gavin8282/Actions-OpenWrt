@@ -3,7 +3,7 @@ Description=Unblock Netease Music
 
 [Service]
 Environment=MIN_BR=320000 NO_CACHE=true ENABLE_LOCAL_VIP=true FOLLOW_SOURCE_ORDER=true LOG_FILE=/tmp/mp3.log
-ExecStart=/user/bin/UnblockNeteaseMusic -o pyncmd kuwo -p 6200:6201 -s
+ExecStart=/usr/bin/UnblockNeteaseMusic -o pyncmd kuwo -p 6200:6201 -s
 
 
 [Install]
