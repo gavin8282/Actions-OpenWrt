@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: 21.02.5-x86-Lite
+name: 21.02.6-D2-AP-wpad-openssl-tiny
 
 on:
   repository_dispatch:
@@ -20,17 +20,17 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://code.aliyun.com/openwrt/openwrt.git
-  REPO_BRANCH: 21.02-lite
+  REPO_URL: https://github.com/4860575/g-openwrt.git
+  REPO_BRANCH: main
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 21.02.5-x86-lite.config
+  CONFIG_FILE: 21.02.6-D2-AP-wpad-openssl-tiny.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
+  UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: false
   UPLOAD_WETRANSFER: false
-  UPLOAD_RELEASE: false
+  UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
 
 jobs:
