@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: 21.02.6-wrt3200-wpad-openssl-tiny
+name: 21.02.7-wrt3200-wpad-wolfssl-tiny
 
 on:
   repository_dispatch:
@@ -20,17 +20,17 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://github.com/4860575/g-openwrt
-  REPO_BRANCH: main
+  REPO_URL: https://code.aliyun.com/openwrt/openwrt.git
+  REPO_BRANCH: 21.02-lite
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 21.02.6-wrt3200-wpad-openssl-tiny.config
+  CONFIG_FILE: 21.02.7-wrt3200-wpad-wolfssl-tiny.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: true
+  UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: false
   UPLOAD_WETRANSFER: false
-  UPLOAD_RELEASE: true
+  UPLOAD_RELEASE: false
   TZ: Asia/Shanghai
 
 jobs:
@@ -90,7 +90,7 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        make download -j$(nproc)
+        make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
     - name: Compile the firmware
@@ -152,8 +152,8 @@ jobs:
       run: |
         echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
         touch release.txt
-        [ $UPLOAD_COWTRANSFER = true ] && echo "???? [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
-        [ $UPLOAD_WETRANSFER = true ] && echo "???? [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
+        [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
+        [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
         echo "::set-output name=status::success"
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v1
