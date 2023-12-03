@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: 21.02.7-ct3003
+name: 21.02.7-ct3003-mtwifi-cfg
 
 on:
   repository_dispatch:
