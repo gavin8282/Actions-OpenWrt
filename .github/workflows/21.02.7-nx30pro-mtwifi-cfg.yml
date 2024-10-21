@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: 221.02.7-nx30pro-mtwifi-cfg
+name: 21.02.7-nx30pro-mtwifi-cfg
 
 on:
   repository_dispatch:
