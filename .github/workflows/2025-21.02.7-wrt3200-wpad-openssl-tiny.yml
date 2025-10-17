@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: 21.02.7-wrt3200-wpad-openssl-tiny
+name: 2025-21.02.7-wrt3200-wpad-openssl-tiny
 
 on:
   repository_dispatch:
