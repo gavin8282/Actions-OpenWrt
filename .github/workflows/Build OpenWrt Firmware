@@ -1,0 +1,152 @@
+name: Build OpenWrt Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: '选择源码仓库及分支'
+        required: true
+        default: 'gavin8282/g-openwrt:24.10-mtk7981'
+        type: choice
+        options:
+          - 'gavin8282/g-openwrt:21.02-mtk7981'
+          - 'gavin8282/g-openwrt:24.10-mtk7981'
+          - 'gavin8282/g-openwrt:25.12-mtk7981'
+          - 'padavanonly/immortalwrt-mt798x-6.6:openwrt-24.10-6.6'
+          - 'chasey-dev/immortalwrt-mt798x-rebase:25.12'
+
+      config_file:
+        description: '选择配置文件'
+        required: true
+        default: 'mt7981-ax3000_dae.config'
+        type: choice
+        options:
+          - 'mt7981-ax3000.config'
+          - 'mt7981-ax3000_dae.config'
+
+      device_model:
+        description: '选择目标硬件型号 (Device Node)'
+        required: true
+        default: 'cmcc_rax3000m'
+        type: choice
+        options:
+          - 'cmcc_rax3000m'
+          - 'cmcc_rax3000me'
+          - 'xiaomi_mi-router-ax3000t'
+          - 'xiaomi_mi-router-ax3000t-ubootmod'
+          - 'qihoo_360t7'
+          - 'h3c_magic-nx30-pro'
+          - 'glinet_gl-mt3000'
+          - 'abt_asr3000'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Parse Repo and Branch
+      id: parse_repo
+      run: |
+        # 解析输入的仓库和分支字符串 (格式为 owner/repo:branch)
+        SELECTED_INPUT="${{ github.event.inputs.source_repo }}"
+        REPO_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f1)
+        BRANCH_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f2)
+        
+        echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
+        echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.parse_repo.outputs.repo }}
+        ref: ${{ steps.parse_repo.outputs.branch }}
+
+    - name: Initialization Environment via Official Script
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        # 1. 清理 runner 磁盘空间以防容量不足
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+        
+        # 2. 运行环境初始化脚本
+        sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+        
+        # 3. 设置系统时区
+        sudo timedatectl set-timezone "Asia/Shanghai"
+
+    - name: Update & Install Feeds
+      run: |
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Load Config & Set Device
+      run: |
+        CONFIG_NAME="${{ github.event.inputs.config_file }}"
+        DEVICE_NODE="${{ github.event.inputs.device_model }}"
+        
+        # 1. 复制指定的配置文件
+        if [ -f "defconfig/$CONFIG_NAME" ]; then
+          cp -f "defconfig/$CONFIG_NAME" .config
+        elif [ -f "$CONFIG_NAME" ]; then
+          cp -f "$CONFIG_NAME" .config
+        else
+          echo "Warning: Config file $CONFIG_NAME not found, creating a new .config!"
+          touch .config
+        fi
+        
+        # 2. 清理旧的设备配置项，并写入选择的新硬件设备节点
+        sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
+        echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
+        
+        # 3. 展开并补全完整的 .config 配置文件
+        make defconfig
+
+    - name: Download Packages
+      run: |
+        make download -j$(nproc)
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: Build Firmware
+      run: |
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+
+    - name: Organize Firmware Files
+      id: organize
+      run: |
+        # 创建临时整理目录
+        mkdir -p release_files
+        
+        # 查找所有编译好的镜像文件并移动至打包目录
+        find bin/targets/ -type f \( -name "*.bin" -o -name "*.tar.gz" -o -name "*.manifest" -o -name "*sysupgrade*" \) -exec cp -f {} release_files/ \;
+        
+        # 环境变量设置
+        TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
+        echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload Firmware to Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ImmortalWrt_${{ github.event.inputs.device_model }}_${{ github.event.inputs.config_file }}
+        path: release_files/
+
+    - name: Release Firmware to GitHub Releases
+      uses: softprops/action-gh-release@v2
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.organize.outputs.release_tag }}
+        name: "Firmware - ${{ github.event.inputs.device_model }} (${{ steps.organize.outputs.release_tag }})"
+        body: |
+          ### 🛠 编译参数信息
+          - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
+          - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
+          - **配置文件**: `${{ github.event.inputs.config_file }}`
+          - **硬件型号**: `${{ github.event.inputs.device_model }}`
+          - **编译时间**: $(date +'%Y-%m-%d %H:%M:%S')
+        draft: false
+        prerelease: false
+        files: release_files/*
