@@ -31,13 +31,9 @@ on:
         type: choice
         options:
           - 'cmcc_rax3000m'
-          - 'cmcc_rax3000me'
-          - 'xiaomi_mi-router-ax3000t'
-          - 'xiaomi_mi-router-ax3000t-ubootmod'
-          - 'qihoo_360t7'
-          - 'h3c_magic-nx30-pro'
-          - 'glinet_gl-mt3000'
-          - 'abt_asr3000'
+          - 'cetron_ct3003'
+          - 'creatlentem_clt-r30b1'
+          - 'creatlentem_clt-r30b1-112m'
 
 jobs:
   build:
@@ -51,7 +47,7 @@ jobs:
         SELECTED_INPUT="${{ github.event.inputs.source_repo }}"
         REPO_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f1)
         BRANCH_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f2)
-        
+
         echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
         echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
@@ -67,10 +63,10 @@ jobs:
       run: |
         # 1. 清理 runner 磁盘空间以防容量不足
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
-        
+
         # 2. 运行环境初始化脚本
         sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-        
+
         # 3. 设置系统时区
         sudo timedatectl set-timezone "Asia/Shanghai"
 
@@ -83,7 +79,7 @@ jobs:
       run: |
         CONFIG_NAME="${{ github.event.inputs.config_file }}"
         DEVICE_NODE="${{ github.event.inputs.device_model }}"
-        
+
         # 1. 复制指定的配置文件
         if [ -f "defconfig/$CONFIG_NAME" ]; then
           cp -f "defconfig/$CONFIG_NAME" .config
@@ -93,11 +89,11 @@ jobs:
           echo "Warning: Config file $CONFIG_NAME not found, creating a new .config!"
           touch .config
         fi
-        
+
         # 2. 清理旧的设备配置项，并写入选择的新硬件设备节点
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
         echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
-        
+
         # 3. 展开并补全完整的 .config 配置文件
         make defconfig
 
@@ -117,10 +113,10 @@ jobs:
       run: |
         # 创建临时整理目录
         mkdir -p release_files
-        
+
         # 查找所有编译好的镜像文件并移动至打包目录
         find bin/targets/ -type f \( -name "*.bin" -o -name "*.tar.gz" -o -name "*.manifest" -o -name "*sysupgrade*" \) -exec cp -f {} release_files/ \;
-        
+
         # 环境变量设置
         TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
