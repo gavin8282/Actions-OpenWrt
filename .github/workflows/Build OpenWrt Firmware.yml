@@ -159,8 +159,13 @@ jobs:
         mkdir -p release_files
         find bin/targets/ -type f \( -name "*.bin" -o -name "*.tar.gz" -o -name "*.manifest" -o -name "*sysupgrade*" \) -exec cp -f {} release_files/ \;
 
+        # 1. 提取标签与精确时间格式
         TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
+        BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
+
+        # 2. 输出到步骤环境变量中
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload Firmware to Artifacts
@@ -183,7 +188,7 @@ jobs:
           - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
           - **配置文件**: `${{ github.event.inputs.config_file }}`
           - **目标硬件**: `${{ matrix.device_model }}`
-          - **编译时间**: $(date +'%Y-%m-%d %H:%M:%S')
+          - **编译时间**: `${{ steps.organize.outputs.build_time }}`
         draft: false
         prerelease: false
         files: release_files/*
