@@ -24,7 +24,6 @@ on:
           - 'mt7981-ax3000.config'
           - 'mt7981-ax3000_dae.config'
 
-      # ==================== 你的常用设备列表 ====================
       device_rax3000m:
         description: '移动 RAX3000M (cmcc_rax3000m)'
         type: boolean
@@ -59,7 +58,6 @@ jobs:
           [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1")
           [ "${{ inputs.device_clt_r30b1_112m }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1-112m")
 
-          # 兜底机制：如果没有任何勾选，默认编译 cmcc_rax3000m
           if [ ${#DEVICES[@]} -eq 0 ]; then
             DEVICES+=("cmcc_rax3000m")
           fi
@@ -73,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device_model: ${{ JSON(needs.matrix_prep.outputs.devices) }}
+        device_model: ${{ fromJSON(needs.matrix_prep.outputs.devices) }}
 
     steps:
     - name: Parse Repo and Branch
@@ -82,10 +80,9 @@ jobs:
         SELECTED_INPUT="${{ github.event.inputs.source_repo }}"
         REPO_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f1)
         BRANCH_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f2)
-        
-        # 将斜杠替换为下划线，用于安全的缓存 Key 命名
+
         REPO_KEY=$(echo "$REPO_NAME" | tr '/' '_')
-        
+
         echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
         echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
         echo "repo_key=$REPO_KEY" >> $GITHUB_OUTPUT
@@ -104,7 +101,7 @@ jobs:
         sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
         sudo timedatectl set-timezone "Asia/Shanghai"
 
-    - name: Cache dl Directory (源码依赖包 - 按仓库及分支隔离)
+    - name: Cache dl Directory (源码依赖包)
       uses: actions/cache@v4
       with:
         path: dl
@@ -112,7 +109,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-
 
-    - name: Cache ccache (编译缓存 - 按版本、型号及工具链严格隔离)
+    - name: Cache ccache (编译二进制缓存)
       uses: actions/cache@v4
       with:
         path: ~/.ccache
@@ -129,7 +126,7 @@ jobs:
       run: |
         CONFIG_NAME="${{ github.event.inputs.config_file }}"
         DEVICE_NODE="${{ matrix.device_model }}"
-        
+
         if [ -f "defconfig/$CONFIG_NAME" ]; then
           cp -f "defconfig/$CONFIG_NAME" .config
         elif [ -f "$CONFIG_NAME" ]; then
@@ -138,14 +135,11 @@ jobs:
           echo "Warning: Config file $CONFIG_NAME not found!"
           touch .config
         fi
-        
-        # 替换设备节点为当前矩阵运行的型号[cite: 1]
+
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
         echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
-        
-        # 开启 ccache 加速
         echo "CONFIG_CCACHE=y" >> .config
-        
+
         make defconfig
 
     - name: Download Packages
@@ -164,7 +158,7 @@ jobs:
       run: |
         mkdir -p release_files
         find bin/targets/ -type f \( -name "*.bin" -o -name "*.tar.gz" -o -name "*.manifest" -o -name "*sysupgrade*" \) -exec cp -f {} release_files/ \;
-        
+
         TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
