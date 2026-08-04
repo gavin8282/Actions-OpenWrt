@@ -157,13 +157,26 @@ jobs:
       id: organize
       run: |
         mkdir -p release_files
-        find bin/targets/ -type f \( -name "*.bin" -o -name "*.tar.gz" -o -name "*.manifest" -o -name "*sysupgrade*" \) -exec cp -f {} release_files/ \;
 
-        # 1. 提取标签与精确时间格式
+        # 1. 提取常用的单个固件、引导与包信息
+        find bin/targets/ -type f \( \
+          -name "*.bin" -o \
+          -name "*.itb" -o \
+          -name "*.ubi" -o \
+          -name "*.tar.gz" -o \
+          -name "*.manifest" -o \
+          -name "*sysupgrade*" -o \
+          -name "*fip*" -o \
+          -name "*uboot*" \
+        \) -exec cp -f {} release_files/ \;
+
+        # 2. 将整个 bin 文件夹完整压缩打包
+        BIN_ARCHIVE="bin_${{ matrix.device_model }}_$(date +'%Y%m%d_%H%M%S').tar.gz"
+        tar -czf "release_files/$BIN_ARCHIVE" bin/
+
         TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
         BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
 
-        # 2. 输出到步骤环境变量中
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
