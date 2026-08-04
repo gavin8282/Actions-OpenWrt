@@ -24,32 +24,71 @@ on:
           - 'mt7981-ax3000.config'
           - 'mt7981-ax3000_dae.config'
 
-      device_model:
-        description: '选择目标硬件型号 (Device Node)'
-        required: true
-        default: 'cmcc_rax3000m'
-        type: choice
-        options:
-          - 'cmcc_rax3000m'
-          - 'cetron_ct3003'
-          - 'creatlentem_clt-r30b1'
-          - 'creatlentem_clt-r30b1-112m'
+      # ==================== 你的常用设备列表 ====================
+      device_rax3000m:
+        description: '移动 RAX3000M (cmcc_rax3000m)'
+        type: boolean
+        default: true
+
+      device_ct3003:
+        description: '星网锐捷 CT3003 (cetron_ct3003)'
+        type: boolean
+        default: false
+
+      device_clt_r30b1:
+        description: '创凌 CLT-R30B1 (creatlentem_clt-r30b1)'
+        type: boolean
+        default: false
+
+      device_clt_r30b1_112m:
+        description: '创凌 CLT-R30B1 112M (creatlentem_clt-r30b1-112m)'
+        type: boolean
+        default: false
 
 jobs:
+  matrix_prep:
+    runs-on: ubuntu-latest
+    outputs:
+      devices: ${{ steps.set-devices.outputs.devices }}
+    steps:
+      - id: set-devices
+        run: |
+          DEVICES=()
+          [ "${{ inputs.device_rax3000m }}" == "true" ] && DEVICES+=("cmcc_rax3000m")
+          [ "${{ inputs.device_ct3003 }}" == "true" ] && DEVICES+=("cetron_ct3003")
+          [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1")
+          [ "${{ inputs.device_clt_r30b1_112m }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1-112m")
+
+          # 兜底机制：如果没有任何勾选，默认编译 cmcc_rax3000m
+          if [ ${#DEVICES[@]} -eq 0 ]; then
+            DEVICES+=("cmcc_rax3000m")
+          fi
+
+          JSON_ARRAY=$(jq -c -n '$ARGS.positional' --args "${DEVICES[@]}")
+          echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
+
   build:
+    needs: matrix_prep
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        device_model: ${{ JSON(needs.matrix_prep.outputs.devices) }}
 
     steps:
     - name: Parse Repo and Branch
       id: parse_repo
       run: |
-        # 解析输入的仓库和分支字符串 (格式为 owner/repo:branch)
         SELECTED_INPUT="${{ github.event.inputs.source_repo }}"
         REPO_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f1)
         BRANCH_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f2)
-
+        
+        # 将斜杠替换为下划线，用于安全的缓存 Key 命名
+        REPO_KEY=$(echo "$REPO_NAME" | tr '/' '_')
+        
         echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
         echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        echo "repo_key=$REPO_KEY" >> $GITHUB_OUTPUT
 
     - name: Checkout Source Code
       uses: actions/checkout@v4
@@ -61,14 +100,25 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        # 1. 清理 runner 磁盘空间以防容量不足
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
-
-        # 2. 运行环境初始化脚本
         sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-
-        # 3. 设置系统时区
         sudo timedatectl set-timezone "Asia/Shanghai"
+
+    - name: Cache dl Directory (源码依赖包 - 按仓库及分支隔离)
+      uses: actions/cache@v4
+      with:
+        path: dl
+        key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}
+        restore-keys: |
+          ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-
+
+    - name: Cache ccache (编译缓存 - 按版本、型号及工具链严格隔离)
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ matrix.device_model }}-${{ hashFiles('include/kernel*', 'toolchain/**', '**/Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ matrix.device_model }}-
 
     - name: Update & Install Feeds
       run: |
@@ -78,23 +128,24 @@ jobs:
     - name: Load Config & Set Device
       run: |
         CONFIG_NAME="${{ github.event.inputs.config_file }}"
-        DEVICE_NODE="${{ github.event.inputs.device_model }}"
-
-        # 1. 复制指定的配置文件
+        DEVICE_NODE="${{ matrix.device_model }}"
+        
         if [ -f "defconfig/$CONFIG_NAME" ]; then
           cp -f "defconfig/$CONFIG_NAME" .config
         elif [ -f "$CONFIG_NAME" ]; then
           cp -f "$CONFIG_NAME" .config
         else
-          echo "Warning: Config file $CONFIG_NAME not found, creating a new .config!"
+          echo "Warning: Config file $CONFIG_NAME not found!"
           touch .config
         fi
-
-        # 2. 清理旧的设备配置项，并写入选择的新硬件设备节点
+        
+        # 替换设备节点为当前矩阵运行的型号[cite: 1]
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
         echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
-
-        # 3. 展开并补全完整的 .config 配置文件
+        
+        # 开启 ccache 加速
+        echo "CONFIG_CCACHE=y" >> .config
+        
         make defconfig
 
     - name: Download Packages
@@ -111,13 +162,9 @@ jobs:
     - name: Organize Firmware Files
       id: organize
       run: |
-        # 创建临时整理目录
         mkdir -p release_files
-
-        # 查找所有编译好的镜像文件并移动至打包目录
         find bin/targets/ -type f \( -name "*.bin" -o -name "*.tar.gz" -o -name "*.manifest" -o -name "*sysupgrade*" \) -exec cp -f {} release_files/ \;
-
-        # 环境变量设置
+        
         TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
@@ -125,7 +172,7 @@ jobs:
     - name: Upload Firmware to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ImmortalWrt_${{ github.event.inputs.device_model }}_${{ github.event.inputs.config_file }}
+        name: ImmortalWrt_${{ matrix.device_model }}_${{ github.event.inputs.config_file }}
         path: release_files/
 
     - name: Release Firmware to GitHub Releases
@@ -135,13 +182,13 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.organize.outputs.release_tag }}
-        name: "Firmware - ${{ github.event.inputs.device_model }} (${{ steps.organize.outputs.release_tag }})"
+        name: "Firmware Releases (${{ steps.organize.outputs.release_tag }})"
         body: |
           ### 🛠 编译参数信息
           - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
           - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
           - **配置文件**: `${{ github.event.inputs.config_file }}`
-          - **硬件型号**: `${{ github.event.inputs.device_model }}`
+          - **目标硬件**: `${{ matrix.device_model }}`
           - **编译时间**: $(date +'%Y-%m-%d %H:%M:%S')
         draft: false
         prerelease: false
