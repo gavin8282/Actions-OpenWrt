@@ -109,13 +109,14 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-
 
-    - name: Cache ccache (编译二进制缓存)
+    - name: Cache ccache (编译二进制缓存 - 同分支跨机型共享加速)
       uses: actions/cache@v4
       with:
         path: ~/.ccache
-        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ matrix.device_model }}-${{ hashFiles('include/kernel*', 'toolchain/**', '**/Makefile') }}
+        # 移除 matrix.device_model 限制，同仓库+同分支的不同机型直接共享 ccache 缓存
+        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ hashFiles('include/kernel*', 'toolchain/**', '**/Makefile') }}
         restore-keys: |
-          ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ matrix.device_model }}-
+          ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
     - name: Update & Install Feeds
       run: |
@@ -158,7 +159,7 @@ jobs:
       run: |
         mkdir -p release_files
 
-        # 1. 提取常用的单个固件、引导与包信息
+        # 1. 提取单固件、引导 (fip/uboot)、itb、ubi 与清单文件
         find bin/targets/ -type f \( \
           -name "*.bin" -o \
           -name "*.itb" -o \
@@ -170,7 +171,7 @@ jobs:
           -name "*uboot*" \
         \) -exec cp -f {} release_files/ \;
 
-        # 2. 将整个 bin 文件夹完整压缩打包
+        # 2. 将整个 bin 目录打包输出
         BIN_ARCHIVE="bin_${{ matrix.device_model }}_$(date +'%Y%m%d_%H%M%S').tar.gz"
         tar -czf "release_files/$BIN_ARCHIVE" bin/
 
