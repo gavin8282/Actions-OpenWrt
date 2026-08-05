@@ -18,7 +18,7 @@ on:
       config_file:
         description: '选择配置文件 (仅24.10/25.12生效，21.02会自动匹配专属config)'
         required: true
-        default: '24.10-rax3000m_dae.config'
+        default: 'mt7981-ax3000_dae.config'
         type: choice
         options:
           - 'mt7981-ax3000.config'
