@@ -24,21 +24,20 @@ on:
         options:
           - 'mt7981-ax3000.config'
           - 'mt7981-ax3000_dae.config'
-          - '24.10-rax3000m_dae.config'
 
       # ==========================
-      # 常用设备
+      # 常用设备（默认勾选常用三剑客）
       # ==========================
 
       device_rax3000m:
-        description: '移动 RAX3000M'
+        description: '移动 RAX3000M (cmcc_rax3000m)'
         type: boolean
         default: true
 
       device_ct3003:
-        description: '星网锐捷 CT3003'
+        description: '星网锐捷 CT3003 (cetron_ct3003)'
         type: boolean
-        default: false
+        default: true
 
       device_clt_r30b1:
         description: '创凌 CLT-R30B1 (标准版/16M/32M)'
@@ -48,7 +47,7 @@ on:
       device_clt_r30b1_112m:
         description: '创凌 CLT-R30B1 (112M 大闪存版)'
         type: boolean
-        default: false
+        default: true
 
       device_nx30pro:
         description: 'NX30Pro'
@@ -121,7 +120,7 @@ jobs:
               done
           fi
 
-          # 默认设备
+          # 保底默认设备
           if [ ${#DEVICES[@]} -eq 0 ]; then
               DEVICES+=("rax3000m")
           fi
@@ -235,7 +234,7 @@ jobs:
           [ -x "$(command -v ccache)" ] && ccache -C && ccache -z
 
       # ================================
-      # feeds
+      # feeds 依赖更新与清洗
       # ================================
 
       - name: Update Feeds
@@ -243,13 +242,11 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-          # 21.02 golang兼容处理
-          rm -rf feeds/helloworld/mihomo || true
-          rm -rf package/feeds/helloworld/mihomo || true
-          find . -type d -name mihomo -exec rm -rf {} + || true
+          # 递归全盘清理 mihomo 源码（防止旧版本 Golang 编译报错）
+          find package/ feeds/ -type d -name "mihomo" -exec rm -rf {} + 2>/devnull || true
 
       # ================================
-      # 动态设备配置
+      # 动态设备配置 (核心逻辑)
       # ================================
 
       - name: Load Config And Detect Device
@@ -304,7 +301,7 @@ jobs:
 
           echo "Using config: $CONFIG_PATH"
 
-          # 2. 根据 config 判断 target
+          # 2. 根据 config 判断 target 前缀
           if grep -q "CONFIG_TARGET_mediatek_mt7981=y" "$CONFIG_PATH"; then
               TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE"
               PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE"
@@ -382,7 +379,7 @@ jobs:
                     ;;
               esac
 
-              # 精确匹配
+              # 精确匹配候选名称
               for dev in "${candidates[@]}"
               do
                   if grep -q "^CONFIG_TARGET_DEVICE_.*_DEVICE_${dev}=y" "$cfg"; then
@@ -391,7 +388,7 @@ jobs:
                   fi
               done
 
-              # Fallback 模糊搜索（按字符串长度倒序，优先长名称如 112m）
+              # Fallback 模糊搜索（按名称长度降序，优先保证后缀命中的准确度）
               NORMAL_ALIAS=$(echo "$alias" | tr '_' '-')
 
               MATCH=$(grep "^CONFIG_TARGET_DEVICE_.*_DEVICE_.*=y" "$cfg" \
@@ -543,7 +540,7 @@ jobs:
             cp -f "$FILE" "release_files/${NODE_NAME}-${FILENAME}"
           done
 
-          # 打包完整的 bin/targets 目录作为保底备份
+          # 打包 bin/targets 目录作为保底备份
           tar --exclude='*/packages' -czf "release_files/bin_targets_${NODE_NAME}.tar.gz" -C bin targets
 
           cd release_files
@@ -583,7 +580,8 @@ jobs:
       - name: Upload Firmware to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt_${{ steps.set_device.outputs.node_name }}_${{ github.event.inputs.config_file }}
+          # 去掉 config 文件名的后缀，保证制品包名称美观
+          name: ImmortalWrt_${{ steps.set_device.outputs.node_name }}_${{ sed -E 's/\.config$//' <<< github.event.inputs.config_file }}
           path: release_files/
 
       - name: Release Firmware to GitHub Releases
