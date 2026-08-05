@@ -104,7 +104,7 @@ jobs:
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
         sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-        sudo apt-get install -y ccache
+        sudo apt-get update && sudo apt-get install -y ccache
         sudo timedatectl set-timezone "Asia/Shanghai"
 
     - name: Cache dl Directory (源码依赖包)
