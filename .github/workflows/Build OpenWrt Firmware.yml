@@ -111,27 +111,24 @@ jobs:
       uses: actions/cache@v4
       with:
         path: dl
-        key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}
+        key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.clear_cache && github.run_id || 'default' }}
         restore-keys: |
-          ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-
+          ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
     - name: Cache ccache (编译二进制缓存)
       uses: actions/cache@v4
       with:
         path: ~/.ccache
-        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ hashFiles('include/kernel*', 'toolchain/**', '**/Makefile') }}
+        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.clear_cache && github.run_id || 'default' }}-${{ hashFiles('include/kernel*', 'toolchain/**', '**/Makefile') }}
         restore-keys: |
           ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
     - name: Clear Caches If Requested
       if: ${{ inputs.clear_cache }}
       run: |
-        echo "⚠️ 用户勾选了清理缓存，开始清理旧的 dl 和 ccache 缓存目录..."
-        rm -rf dl
-        rm -rf ~/.ccache/*
-        mkdir -p dl
-        mkdir -p ~/.ccache
-        echo "✅ 本地缓存清理完毕，本次编译将以全新状态（冷启动）运行。"
+        echo "⚠️ 用户勾选了清理缓存，清理本地残余..."
+        rm -rf dl ~/.ccache/*
+        mkdir -p dl ~/.ccache
 
     - name: Update & Install Feeds
       run: |
@@ -152,15 +149,19 @@ jobs:
           touch .config
         fi
         
-        # 移除已有的设备指定
+        # 确保目标架构定义正确
+        echo "CONFIG_TARGET_mediatek=y" >> .config
+        echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+        
+        # 移除原有的设备定义
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
         
-        # 写入目标设备节点（兼容下划线和中划线命名）
+        # 同时追加中划线和下划线节点命名的兼容定义
         echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
         ALT_DEVICE_NODE=$(echo "$DEVICE_NODE" | tr '-' '_')
         echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${ALT_DEVICE_NODE}=y" >> .config
         
-        # 开启 ccache 支持
+        # 开启 ccache
         echo "CONFIG_CCACHE=y" >> .config
         
         make defconfig
@@ -189,7 +190,7 @@ jobs:
       run: |
         mkdir -p release_files
         
-        # 提取 bin 目录下的所有文件（含 bin/itb/ubi/fip/manifest）
+        # 提取 bin 目录下的主要刷机镜像及引导包
         find bin/targets/ -type f \( \
           -name "*.bin" -o \
           -name "*.itb" -o \
@@ -201,11 +202,12 @@ jobs:
           -name "*uboot*" \
         \) -exec cp -f {} release_files/ \;
         
-        # 压缩 bin 目录
+        # 打包 bin 全集
         BIN_ARCHIVE="bin_full_${{ matrix.device_model }}.tar.gz"
         tar -czf "release_files/$BIN_ARCHIVE" bin/
         
-        TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
+        # Tag 名加入设备名，防止多机型矩阵并行 Release 冲突
+        TAG_NAME="Build-${{ matrix.device_model }}-$(date +'%Y.%m.%d-%H%M')"
         BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
         
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
@@ -225,7 +227,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.organize.outputs.release_tag }}
-        name: "Firmware Releases (${{ steps.organize.outputs.release_tag }})"
+        name: "${{ matrix.device_model }} Firmware Release (${{ steps.organize.outputs.release_tag }})"
         body: |
           ### 🛠 编译参数信息
           - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
