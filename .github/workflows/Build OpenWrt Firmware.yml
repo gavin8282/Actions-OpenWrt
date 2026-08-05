@@ -1,0 +1,222 @@
+name: Build OpenWrt Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: '选择源码仓库及分支'
+        required: true
+        default: 'gavin8282/g-openwrt:24.10-mtk7981'
+        type: choice
+        options:
+          - 'gavin8282/g-openwrt:21.02-mtk7981'
+          - 'gavin8282/g-openwrt:24.10-mtk7981'
+          - 'gavin8282/g-openwrt:25.12-mtk7981'
+          - 'padavanonly/immortalwrt-mt798x-6.6:openwrt-24.10-6.6'
+          - 'chasey-dev/immortalwrt-mt798x-rebase:25.12'
+
+      config_file:
+        description: '选择配置文件'
+        required: true
+        default: 'mt7981-ax3000_dae.config'
+        type: choice
+        options:
+          - 'mt7981-ax3000.config'
+          - 'mt7981-ax3000_dae.config'
+
+      device_rax3000m:
+        description: '移动 RAX3000M (cmcc_rax3000m)'
+        type: boolean
+        default: true
+
+      device_ct3003:
+        description: '星网锐捷 CT3003 (cetron_ct3003)'
+        type: boolean
+        default: false
+
+      device_clt_r30b1:
+        description: '创凌 CLT-R30B1 (creatlentem_clt-r30b1)'
+        type: boolean
+        default: false
+
+      device_clt_r30b1_112m:
+        description: '创凌 CLT-R30B1 112M (creatlentem_clt-r30b1-112m)'
+        type: boolean
+        default: false
+
+jobs:
+  matrix_prep:
+    runs-on: ubuntu-latest
+    outputs:
+      devices: ${{ steps.set-devices.outputs.devices }}
+    steps:
+      - id: set-devices
+        run: |
+          DEVICES=()
+          [ "${{ inputs.device_rax3000m }}" == "true" ] && DEVICES+=("cmcc_rax3000m")
+          [ "${{ inputs.device_ct3003 }}" == "true" ] && DEVICES+=("cetron_ct3003")
+          [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1")
+          [ "${{ inputs.device_clt_r30b1_112m }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1-112m")
+
+          if [ ${#DEVICES[@]} -eq 0 ]; then
+            DEVICES+=("cmcc_rax3000m")
+          fi
+
+          JSON_ARRAY=$(jq -c -n '$ARGS.positional' --args "${DEVICES[@]}")
+          echo "devices=$JSON_ARRAY" >> $GITHUB_OUTPUT
+
+  build:
+    needs: matrix_prep
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        device_model: ${{ fromJSON(needs.matrix_prep.outputs.devices) }}
+
+    steps:
+    - name: Parse Repo and Branch
+      id: parse_repo
+      run: |
+        SELECTED_INPUT="${{ github.event.inputs.source_repo }}"
+        REPO_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f1)
+        BRANCH_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f2)
+        
+        REPO_KEY=$(echo "$REPO_NAME" | tr '/' '_')
+        
+        echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
+        echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        echo "repo_key=$REPO_KEY" >> $GITHUB_OUTPUT
+
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.parse_repo.outputs.repo }}
+        ref: ${{ steps.parse_repo.outputs.branch }}
+
+    - name: Initialization Environment via Official Script
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+        sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+        sudo apt-get install -y ccache
+        sudo timedatectl set-timezone "Asia/Shanghai"
+
+    - name: Cache dl Directory (源码依赖包)
+      uses: actions/cache@v4
+      with:
+        path: dl
+        key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}
+        restore-keys: |
+          ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-
+
+    - name: Cache ccache (编译二进制缓存)
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ hashFiles('include/kernel*', 'toolchain/**', '**/Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
+
+    - name: Update & Install Feeds
+      run: |
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Load Config & Set Device
+      run: |
+        CONFIG_NAME="${{ github.event.inputs.config_file }}"
+        DEVICE_NODE="${{ matrix.device_model }}"
+        
+        if [ -f "defconfig/$CONFIG_NAME" ]; then
+          cp -f "defconfig/$CONFIG_NAME" .config
+        elif [ -f "$CONFIG_NAME" ]; then
+          cp -f "$CONFIG_NAME" .config
+        else
+          echo "Warning: Config file $CONFIG_NAME not found!"
+          touch .config
+        fi
+        
+        # 移除已有的设备指定
+        sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
+        
+        # 写入目标设备节点（兼容下划线和中划线命名）
+        echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
+        ALT_DEVICE_NODE=$(echo "$DEVICE_NODE" | tr '-' '_')
+        echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${ALT_DEVICE_NODE}=y" >> .config
+        
+        # 开启 ccache 支持
+        echo "CONFIG_CCACHE=y" >> .config
+        
+        make defconfig
+
+    - name: Download Packages
+      run: |
+        make download -j$(nproc)
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: Build Firmware
+      env:
+        CCACHE_DIR: ~/.ccache
+        CCACHE_COMPRESS: "1"
+        CCACHE_COMPRESSLEVEL: "6"
+      run: |
+        ccache -M 10G
+        ccache -z
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+        ccache -s
+
+    - name: Organize Firmware Files
+      id: organize
+      run: |
+        mkdir -p release_files
+        
+        # 提取 bin 目录下的所有文件（含 bin/itb/ubi/fip/manifest）
+        find bin/targets/ -type f \( \
+          -name "*.bin" -o \
+          -name "*.itb" -o \
+          -name "*.ubi" -o \
+          -name "*.tar.gz" -o \
+          -name "*.manifest" -o \
+          -name "*sysupgrade*" -o \
+          -name "*fip*" -o \
+          -name "*uboot*" \
+        \) -exec cp -f {} release_files/ \;
+        
+        # 压缩 bin 目录，命名清晰避免被混淆
+        BIN_ARCHIVE="bin_full_${{ matrix.device_model }}.tar.gz"
+        tar -czf "release_files/$BIN_ARCHIVE" bin/
+        
+        TAG_NAME="Build-$(date +'%Y.%m.%d-%H%M')"
+        BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
+        
+        echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload Firmware to Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ImmortalWrt_${{ matrix.device_model }}_${{ github.event.inputs.config_file }}
+        path: release_files/
+
+    - name: Release Firmware to GitHub Releases
+      uses: softprops/action-gh-release@v2
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.organize.outputs.release_tag }}
+        name: "Firmware Releases (${{ steps.organize.outputs.release_tag }})"
+        body: |
+          ### 🛠 编译参数信息
+          - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
+          - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
+          - **配置文件**: `${{ github.event.inputs.config_file }}`
+          - **目标硬件**: `${{ matrix.device_model }}`
+          - **编译时间**: `${{ steps.organize.outputs.build_time }}`
+        draft: false
+        prerelease: false
+        files: release_files/*
