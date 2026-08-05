@@ -23,7 +23,6 @@ on:
         options:
           - 'mt7981-ax3000.config'
           - 'mt7981-ax3000_dae.config'
-          - '24.10-rax3000m_dae.config'
 
       # --- 常用设备勾选区 ---
       device_rax3000m:
