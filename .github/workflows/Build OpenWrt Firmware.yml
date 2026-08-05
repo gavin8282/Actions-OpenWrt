@@ -23,6 +23,7 @@ on:
         options:
           - 'mt7981-ax3000.config'
           - 'mt7981-ax3000_dae.config'
+          - '24.10-rax3000m_dae.config'
 
       # --- 常用设备勾选区 ---
       device_rax3000m:
@@ -106,7 +107,6 @@ jobs:
   build:
     needs: matrix_prep
     runs-on: ubuntu-24.04
-    # ➕ 显式配置 GITHUB_TOKEN 的写入权限，彻底解决 403 报错
     permissions:
       contents: write
       discussions: write
@@ -123,7 +123,7 @@ jobs:
         REPO_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f1)
         BRANCH_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f2)
         REPO_KEY=$(echo "$REPO_NAME" | tr '/' '_')
-        
+
         echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
         echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
         echo "repo_key=$REPO_KEY" >> $GITHUB_OUTPUT
@@ -145,7 +145,7 @@ jobs:
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
         curl -fL --retry 5 --retry-delay 3 -o init_env.sh https://build-scripts.immortalwrt.org/init_build_environment.sh
         sudo bash init_env.sh
-        
+
         sudo apt-get update || true
         for pkg in ccache jq zstd pv; do
           sudo apt-get install -y --fix-missing "$pkg" || echo "⚠️ Warning: Failed to install $pkg, skipping..."
@@ -182,13 +182,18 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
+        # ⚠️ 在 feeds 安装完成后立刻强行剔除 mihomo 源码，避免 21.02 低版本 Golang 报错
+        rm -rf feeds/helloworld/mihomo
+        rm -rf package/feeds/helloworld/mihomo
+        find . -type d -name "mihomo" -exec rm -rf {} +
+
     - name: Load Config & Set Device Dynamically
       id: set_device
       run: |
         CONFIG_NAME="${{ github.event.inputs.config_file }}"
         BRANCH="${{ steps.parse_repo.outputs.branch }}"
         ALIAS="${{ matrix.device_alias }}"
-        
+
         # 1. 判断分支架构类型与 21.02 专属 Config 匹配逻辑
         FOUND_CONFIG=""
         if [[ "$BRANCH" == *"21.02"* ]]; then
@@ -254,7 +259,7 @@ jobs:
           echo "❌ Error: Config file $FOUND_CONFIG not found!"
           exit 1
         fi
-        
+
         echo "✅ Using config file: $CONFIG_PATH"
         cp -f "$CONFIG_PATH" .config
 
@@ -264,7 +269,7 @@ jobs:
 
         # 2. 清理配置文件中原本勾选的旧目标设备
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_/d' .config
-        
+
         # 3. 动态写入选中的目标设备节点
         echo "${TARGET_PREFIX}_${NODE_NAME}=y" >> .config
         echo "${PKG_PREFIX}_${NODE_NAME}=\"\"" >> .config
@@ -290,11 +295,11 @@ jobs:
         fi
         echo "=== 编译前磁盘空间 ==="
         df -h
-        
+
         NPROC=$(( $(nproc) + 1 ))
         echo -e "Starting compile with ${NPROC} threads..."
         make -j${NPROC} || make -j${NPROC} V=s || make -j1 V=s
-        
+
         echo "=== 编译后磁盘空间 ==="
         df -h
         if [ -x "$(command -v ccache)" ]; then
@@ -324,9 +329,9 @@ jobs:
       run: |
         NODE_NAME="${{ steps.set_device.outputs.node_name }}"
         mkdir -p release_files
-        
+
         [ -f ".config" ] && cp -f .config release_files/${NODE_NAME}.config
-        
+
         # 1. 收集所有目标固件镜像及引导文件 (.bin, .trx, .itb, .ubi 等)
         find bin/targets/ -type f \( \
           -name "*.bin" -o \
@@ -343,14 +348,14 @@ jobs:
           FILENAME=$(basename "$FILE")
           cp -f "$FILE" "release_files/${NODE_NAME}-${FILENAME}"
         done
-        
+
         # 2. 打包完整的 bin/targets 目录作为保底备份
         tar --exclude='*/packages' -czf "release_files/bin_targets_${NODE_NAME}.tar.gz" -C bin targets
-        
+
         cd release_files
         sha256sum * > sha256sums.txt
         cd ..
-        
+
         IMAGE_COUNT=$(find release_files/ -type f \( \
           -name "*.bin" -o \
           -name "*.trx" -o \
@@ -360,18 +365,18 @@ jobs:
           -name "*sysupgrade*" -o \
           -name "*factory*" \
         \) | wc -l)
-        
+
         if [ "$IMAGE_COUNT" -eq 0 ]; then
           echo "❌ Error: 未找到任何有效的二进制固件镜像！终止 Release。"
           exit 1
         fi
-        
+
         TAG_NAME="Build-${NODE_NAME}-${{ github.run_number }}"
         BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
         END_TIME=$(date +%s)
         START_TIME="${{ steps.parse_repo.outputs.start_time }}"
         ELAPSED_MIN=$(( (END_TIME - START_TIME) / 60 ))
-        
+
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
         echo "elapsed_min=$ELAPSED_MIN" >> $GITHUB_OUTPUT
