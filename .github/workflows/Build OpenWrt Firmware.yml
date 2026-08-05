@@ -25,22 +25,22 @@ on:
           - 'mt7981-ax3000_dae.config'
 
       device_rax3000m:
-        description: '移动 RAX3000M (cmcc_rax3000m)'
+        description: '移动 RAX3000M'
         type: boolean
         default: true
 
       device_ct3003:
-        description: '星网锐捷 CT3003 (cetron_ct3003)'
+        description: '星网锐捷 CT3003'
         type: boolean
         default: false
 
       device_clt_r30b1:
-        description: '创凌 CLT-R30B1 (creatlentem_clt-r30b1)'
+        description: '创凌 CLT-R30B1'
         type: boolean
         default: false
 
       device_clt_r30b1_112m:
-        description: '创凌 CLT-R30B1 112M (creatlentem_clt-r30b1-112m)'
+        description: '创凌 CLT-R30B1 112M'
         type: boolean
         default: false
 
@@ -58,13 +58,13 @@ jobs:
       - id: set-devices
         run: |
           DEVICES=()
-          [ "${{ inputs.device_rax3000m }}" == "true" ] && DEVICES+=("cmcc_rax3000m")
-          [ "${{ inputs.device_ct3003 }}" == "true" ] && DEVICES+=("cetron_ct3003")
-          [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1")
-          [ "${{ inputs.device_clt_r30b1_112m }}" == "true" ] && DEVICES+=("creatlentem_clt-r30b1-112m")
+          [ "${{ inputs.device_rax3000m }}" == "true" ] && DEVICES+=("rax3000m")
+          [ "${{ inputs.device_ct3003 }}" == "true" ] && DEVICES+=("ct3003")
+          [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("clt_r30b1")
+          [ "${{ inputs.device_clt_r30b1_112m }}" == "true" ] && DEVICES+=("clt_r30b1_112m")
 
           if [ ${#DEVICES[@]} -eq 0 ]; then
-            DEVICES+=("cmcc_rax3000m")
+            DEVICES+=("rax3000m")
           fi
 
           JSON_ARRAY=$(jq -c -n '$ARGS.positional' --args "${DEVICES[@]}")
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device_model: ${{ fromJSON(needs.matrix_prep.outputs.devices) }}
+        device_alias: ${{ fromJSON(needs.matrix_prep.outputs.devices) }}
 
     steps:
     - name: Parse Repo and Branch
@@ -109,7 +109,6 @@ jobs:
         curl -fL --retry 5 --retry-delay 3 -o init_env.sh https://build-scripts.immortalwrt.org/init_build_environment.sh
         sudo bash init_env.sh
         
-        # 修复源索引并循环安装依赖，防止单包不存在导致中断
         sudo apt-get update || true
         for pkg in ccache jq zstd pv; do
           sudo apt-get install -y --fix-missing "$pkg" || echo "⚠️ Warning: Failed to install $pkg, skipping..."
@@ -128,9 +127,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.ccache
-        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_model }}-${{ inputs.clear_cache && github.run_id || 'default' }}
+        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_alias }}-${{ inputs.clear_cache && github.run_id || 'default' }}
         restore-keys: |
-          ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_model }}-
+          ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_alias }}-
           ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
     - name: Clear Caches If Requested
@@ -146,10 +145,12 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Load Config & Set Device
+    - name: Load Config & Set Device Dynamically
+      id: set_device
       run: |
         CONFIG_NAME="${{ github.event.inputs.config_file }}"
-        DEVICE_NODE="${{ matrix.device_model }}"
+        BRANCH="${{ steps.parse_repo.outputs.branch }}"
+        ALIAS="${{ matrix.device_alias }}"
         
         FOUND_CONFIG=""
         if [ -f "defconfig/$CONFIG_NAME" ]; then
@@ -165,16 +166,57 @@ jobs:
         
         echo "✅ Using config file: $FOUND_CONFIG"
         cp -f "$FOUND_CONFIG" .config
+
+        # 1. 自动判断 Target 架构类型 (21.02 是 mt7981，24.10/25.12 是 filogic)
+        if [[ "$BRANCH" == *"21.02"* ]]; then
+          TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE"
+          PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE"
+          echo "CONFIG_TARGET_mediatek=y" >> .config
+          echo "CONFIG_TARGET_mediatek_mt7981=y" >> .config
+        else
+          TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE"
+          PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_filogic_DEVICE"
+          echo "CONFIG_TARGET_mediatek=y" >> .config
+          echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+        fi
+
+        # 2. 依据分支动态判定实际设备节点名
+        NODE_NAME=""
+        case "$ALIAS" in
+          "rax3000m")
+            NODE_NAME="cmcc_rax3000m"
+            ;;
+          "ct3003")
+            NODE_NAME="cetron_ct3003"
+            ;;
+          "clt_r30b1")
+            if [[ "$BRANCH" == *"25.12"* ]]; then
+              NODE_NAME="creatlentem_clt-r30b1"
+            else
+              NODE_NAME="mt7981-clt-r30b1"
+            fi
+            ;;
+          "clt_r30b1_112m")
+            if [[ "$BRANCH" == *"25.12"* ]]; then
+              NODE_NAME="creatlentem_clt-r30b1-112m"
+            else
+              NODE_NAME="mt7981-clt-r30b1-112M"
+            fi
+            ;;
+        esac
+
+        echo "node_name=$NODE_NAME" >> $GITHUB_OUTPUT
+        echo "🎯 Target Branch: $BRANCH"
+        echo "🎯 Resolved Node Name: $NODE_NAME"
+
+        # 3. 清理配置文件中的旧目标设备节点
+        sed -i '/CONFIG_TARGET_DEVICE_mediatek_/d' .config
         
-        echo "CONFIG_TARGET_mediatek=y" >> .config
-        echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
-        
-        sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
-        echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
-        ALT_DEVICE_NODE=$(echo "$DEVICE_NODE" | tr '-' '_')
-        echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${ALT_DEVICE_NODE}=y" >> .config
-        
+        # 4. 写入新的目标设备配置
+        echo "${TARGET_PREFIX}_${NODE_NAME}=y" >> .config
+        echo "${PKG_PREFIX}_${NODE_NAME}=\"\"" >> .config
         echo "CONFIG_CCACHE=y" >> .config
+
         make defconfig
 
     - name: Download Packages
@@ -210,6 +252,7 @@ jobs:
     - name: Upload Build Log On Failure
       if: failure()
       run: |
+        NODE_NAME="${{ steps.set_device.outputs.node_name }}"
         mkdir -p failure_logs
         [ -f ".config" ] && cp -f .config failure_logs/config.buildinfo
         [ -d "logs" ] && cp -rf logs/ failure_logs/
@@ -220,43 +263,54 @@ jobs:
       uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: Build_Failure_Logs_${{ matrix.device_model }}
+        name: Build_Failure_Logs_${{ steps.set_device.outputs.node_name }}
         path: failure_logs/
 
     - name: Organize Firmware Files
       id: organize
       run: |
+        NODE_NAME="${{ steps.set_device.outputs.node_name }}"
         mkdir -p release_files
         
-        [ -f ".config" ] && cp -f .config release_files/${{ matrix.device_model }}.config
+        [ -f ".config" ] && cp -f .config release_files/${NODE_NAME}.config
         
+        # 收集目标固件
         find bin/targets/ -type f \( \
           -name "*.bin" -o \
           -name "*.itb" -o \
           -name "*.ubi" -o \
           -name "*sysupgrade*" -o \
+          -name "*factory*" -o \
           -name "*fip*" -o \
           -name "*uboot*" -o \
           -name "*.manifest" -o \
           -name "*buildinfo*" \
         \) | while read -r FILE; do
           FILENAME=$(basename "$FILE")
-          cp -f "$FILE" "release_files/${{ matrix.device_model }}-${FILENAME}"
+          cp -f "$FILE" "release_files/${NODE_NAME}-${FILENAME}"
         done
         
-        tar --exclude='*/packages' -czf "release_files/bin_targets_${{ matrix.device_model }}.tar.gz" -C bin targets
+        tar --exclude='*/packages' -czf "release_files/bin_targets_${NODE_NAME}.tar.gz" -C bin targets
         
         cd release_files
         sha256sum * > sha256sums.txt
         cd ..
         
-        IMAGE_COUNT=$(find release_files/ -type f \( -name "*.bin" -o -name "*.itb" -o -name "*.ubi" \) | wc -l)
+        # 过滤校验：只统计真正可刷写的系统镜像 (sysupgrade / factory / ubi / squashfs)
+        IMAGE_COUNT=$(find release_files/ -type f \( \
+          -name "*sysupgrade*" -o \
+          -name "*factory*" -o \
+          -name "*ubi*" -o \
+          -name "*squashfs-combined*" -o \
+          -name "*sdcard*" \
+        \) | wc -l)
+        
         if [ "$IMAGE_COUNT" -eq 0 ]; then
-          echo "❌ Error: 未找到任何有效固件镜像！终止 Release。"
+          echo "❌ Error: 未找到任何可刷写的系统固件镜像 (sysupgrade/factory/ubi)！终止 Release。"
           exit 1
         fi
         
-        TAG_NAME="Build-${{ matrix.device_model }}-${{ github.run_number }}"
+        TAG_NAME="Build-${NODE_NAME}-${{ github.run_number }}"
         BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
         END_TIME=$(date +%s)
         START_TIME="${{ steps.parse_repo.outputs.start_time }}"
@@ -270,7 +324,7 @@ jobs:
     - name: Upload Firmware to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ImmortalWrt_${{ matrix.device_model }}_${{ github.event.inputs.config_file }}
+        name: ImmortalWrt_${{ steps.set_device.outputs.node_name }}_${{ github.event.inputs.config_file }}
         path: release_files/
 
     - name: Release Firmware to GitHub Releases
@@ -280,13 +334,13 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.organize.outputs.release_tag }}
-        name: "${{ matrix.device_model }} Firmware Run #${{ github.run_number }}"
+        name: "${{ steps.set_device.outputs.node_name }} Firmware Run #${{ github.run_number }}"
         body: |
           ### 🛠 编译参数信息
           - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
           - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
           - **配置文件**: `${{ github.event.inputs.config_file }}`
-          - **目标硬件**: `${{ matrix.device_model }}`
+          - **目标设备**: `${{ steps.set_device.outputs.node_name }}`
           - **清理缓存**: `${{ github.event.inputs.clear_cache }}`
           - **编译时间**: `${{ steps.organize.outputs.build_time }}`
           - **总计耗时**: `约 ${{ steps.organize.outputs.elapsed_min }} 分钟`
