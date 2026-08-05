@@ -85,29 +85,35 @@ jobs:
         SELECTED_INPUT="${{ github.event.inputs.source_repo }}"
         REPO_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f1)
         BRANCH_NAME=$(echo "$SELECTED_INPUT" | cut -d':' -f2)
-        
         REPO_KEY=$(echo "$REPO_NAME" | tr '/' '_')
         
         echo "repo=$REPO_NAME" >> $GITHUB_OUTPUT
         echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
         echo "repo_key=$REPO_KEY" >> $GITHUB_OUTPUT
+        echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
 
+    # ⑩ 增加 persist-credentials: false
     - name: Checkout Source Code
       uses: actions/checkout@v4
       with:
         repository: ${{ steps.parse_repo.outputs.repo }}
         ref: ${{ steps.parse_repo.outputs.branch }}
+        fetch-depth: 1
+        submodules: recursive
+        persist-credentials: false
 
-    - name: Initialization Environment via Official Script
+    # ❷ 移除 rename 软件包，防止源定位失败
+    - name: Initialization Environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
-        sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-        sudo apt-get update && sudo apt-get install -y ccache
+        curl -fL --retry 5 --retry-delay 3 -o init_env.sh https://build-scripts.immortalwrt.org/init_build_environment.sh
+        sudo bash init_env.sh
+        sudo apt-get update && sudo apt-get install -y ccache jq zstd pv
         sudo timedatectl set-timezone "Asia/Shanghai"
 
-    - name: Cache dl Directory (源码依赖包)
+    - name: Cache dl Directory
       uses: actions/cache@v4
       with:
         path: dl
@@ -115,20 +121,23 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
-    - name: Cache ccache (编译二进制缓存)
+    - name: Cache ccache
       uses: actions/cache@v4
       with:
         path: ~/.ccache
-        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.clear_cache && github.run_id || 'default' }}-${{ hashFiles('include/kernel*', 'toolchain/**', '**/Makefile') }}
+        key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_model }}-${{ inputs.clear_cache && github.run_id || 'default' }}
         restore-keys: |
+          ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_model }}-
           ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
     - name: Clear Caches If Requested
       if: ${{ inputs.clear_cache }}
       run: |
-        echo "⚠️ 用户勾选了清理缓存，清理本地残余..."
-        rm -rf dl ~/.ccache/*
-        mkdir -p dl ~/.ccache
+        echo "⚠️ 正在清理缓存..."
+        rm -rf dl
+        mkdir -p dl
+        ccache -C
+        ccache -z
 
     - name: Update & Install Feeds
       run: |
@@ -140,38 +149,40 @@ jobs:
         CONFIG_NAME="${{ github.event.inputs.config_file }}"
         DEVICE_NODE="${{ matrix.device_model }}"
         
+        FOUND_CONFIG=""
         if [ -f "defconfig/$CONFIG_NAME" ]; then
-          cp -f "defconfig/$CONFIG_NAME" .config
+          FOUND_CONFIG="defconfig/$CONFIG_NAME"
         elif [ -f "$CONFIG_NAME" ]; then
-          cp -f "$CONFIG_NAME" .config
-        else
-          echo "Warning: Config file $CONFIG_NAME not found!"
-          touch .config
+          FOUND_CONFIG="$CONFIG_NAME"
+        fi
+
+        if [ -z "$FOUND_CONFIG" ]; then
+          echo "❌ Error: Config file $CONFIG_NAME not found!"
+          exit 1
         fi
         
-        # 确保目标架构定义正确
+        echo "✅ Using config file: $FOUND_CONFIG"
+        cp -f "$FOUND_CONFIG" .config
+        
         echo "CONFIG_TARGET_mediatek=y" >> .config
         echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
         
-        # 移除原有的设备定义
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE/d' .config
-        
-        # 同时追加中划线和下划线节点命名的兼容定义
         echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${DEVICE_NODE}=y" >> .config
         ALT_DEVICE_NODE=$(echo "$DEVICE_NODE" | tr '-' '_')
         echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${ALT_DEVICE_NODE}=y" >> .config
         
-        # 开启 ccache
         echo "CONFIG_CCACHE=y" >> .config
-        
         make defconfig
 
+    # ❺ 补全 V=s，方便查看源码包下载具体错误
     - name: Download Packages
       run: |
-        make download -j$(nproc)
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
+        make download -j$(nproc) || make download -j1 V=s
+        find dl -size -1024c -delete
+        make download -j1 V=s
 
+    # ❾ 限制编译线程数防 OOM 爆内存
     - name: Build Firmware
       env:
         CCACHE_DIR: ~/.ccache
@@ -180,38 +191,79 @@ jobs:
       run: |
         ccache -M 10G
         ccache -z
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
+        echo "=== 编译前磁盘空间 ==="
+        df -h
+        
+        NPROC=$(( $(nproc) + 1 ))
+        echo -e "Starting compile with ${NPROC} threads..."
+        make -j${NPROC} || make -j${NPROC} V=s || make -j1 V=s
+        
+        echo "=== 编译后磁盘空间 ==="
+        df -h
         echo "=== CCache 缓存命中统计 ==="
         ccache -s
 
+    # ❸ ✍️ 增加防御性校验，❹ 全盘扫日志
+    - name: Upload Build Log On Failure
+      if: failure()
+      run: |
+        mkdir -p failure_logs
+        [ -f ".config" ] && cp -f .config failure_logs/config.buildinfo
+        [ -d "logs" ] && cp -rf logs/ failure_logs/
+        find . -name "*.log" -exec cp -f {} failure_logs/ \; 2>/dev/null || true
+      continue-on-error: true
+
+    - name: Upload Logs Artifact
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: Build_Failure_Logs_${{ matrix.device_model }}
+        path: failure_logs/
+
+    # ❼ 打包排除 packages 目录；❻ 规范变量引用
     - name: Organize Firmware Files
       id: organize
       run: |
         mkdir -p release_files
         
-        # 提取 bin 目录下的主要刷机镜像及引导包
+        [ -f ".config" ] && cp -f .config release_files/${{ matrix.device_model }}.config
+        
         find bin/targets/ -type f \( \
           -name "*.bin" -o \
           -name "*.itb" -o \
           -name "*.ubi" -o \
-          -name "*.tar.gz" -o \
-          -name "*.manifest" -o \
           -name "*sysupgrade*" -o \
           -name "*fip*" -o \
-          -name "*uboot*" \
-        \) -exec cp -f {} release_files/ \;
+          -name "*uboot*" -o \
+          -name "*.manifest" -o \
+          -name "*buildinfo*" \
+        \) | while read -r FILE; do
+          FILENAME=$(basename "$FILE")
+          cp -f "$FILE" "release_files/${{ matrix.device_model }}-${FILENAME}"
+        done
         
-        # 打包 bin 全集
-        BIN_ARCHIVE="bin_full_${{ matrix.device_model }}.tar.gz"
-        tar -czf "release_files/$BIN_ARCHIVE" bin/
+        # 排除 packages 压缩包
+        tar --exclude='*/packages' -czf "release_files/bin_targets_${{ matrix.device_model }}.tar.gz" -C bin targets
         
-        # Tag 名加入设备名，防止多机型矩阵并行 Release 冲突
-        TAG_NAME="Build-${{ matrix.device_model }}-$(date +'%Y.%m.%d-%H%M')"
+        cd release_files
+        sha256sum * > sha256sums.txt
+        cd ..
+        
+        IMAGE_COUNT=$(find release_files/ -type f \( -name "*.bin" -o -name "*.itb" -o -name "*.ubi" \) | wc -l)
+        if [ "$IMAGE_COUNT" -eq 0 ]; then
+          echo "❌ Error: 未找到任何有效固件镜像！终止 Release。"
+          exit 1
+        fi
+        
+        TAG_NAME="Build-${{ matrix.device_model }}-${{ github.run_number }}"
         BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
+        END_TIME=$(date +%s)
+        START_TIME="${{ steps.parse_repo.outputs.start_time }}"
+        ELAPSED_MIN=$(( (END_TIME - START_TIME) / 60 ))
         
         echo "release_tag=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
+        echo "elapsed_min=$ELAPSED_MIN" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload Firmware to Artifacts
@@ -220,6 +272,7 @@ jobs:
         name: ImmortalWrt_${{ matrix.device_model }}_${{ github.event.inputs.config_file }}
         path: release_files/
 
+    # ❽ 开启 overwrite_files
     - name: Release Firmware to GitHub Releases
       uses: softprops/action-gh-release@v2
       if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -227,7 +280,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.organize.outputs.release_tag }}
-        name: "${{ matrix.device_model }} Firmware Release (${{ steps.organize.outputs.release_tag }})"
+        name: "${{ matrix.device_model }} Firmware Run #${{ github.run_number }}"
         body: |
           ### 🛠 编译参数信息
           - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
@@ -236,6 +289,18 @@ jobs:
           - **目标硬件**: `${{ matrix.device_model }}`
           - **清理缓存**: `${{ github.event.inputs.clear_cache }}`
           - **编译时间**: `${{ steps.organize.outputs.build_time }}`
+          - **总计耗时**: `约 ${{ steps.organize.outputs.elapsed_min }} 分钟`
         draft: false
         prerelease: false
+        overwrite_files: true
         files: release_files/*
+
+    # ❶ 移除无效的 filter_tarball 选项，恢复标准清理
+    - name: Delete Old Releases
+      uses: dev-drprasad/delete-older-releases@v0.3.0
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        keep_latest: 10
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
