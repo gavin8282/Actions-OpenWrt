@@ -136,13 +136,12 @@ jobs:
           persist-credentials: false
 
       # ================================
-      # 初始化构建环境
+      # 初始化构建环境（已修复 ubuntu-24.04 删源问题）
       # ================================
 
       - name: Initialize Build Environment
         run: |
           sudo rm -rf \
-            /etc/apt/sources.list.d/* \
             /usr/share/dotnet \
             /usr/local/lib/android \
             /opt/ghc \
@@ -488,7 +487,7 @@ jobs:
 
   cleanup:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     if: success()
