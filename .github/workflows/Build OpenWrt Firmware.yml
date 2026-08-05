@@ -26,7 +26,7 @@ on:
           - 'mt7981-ax3000_dae.config'
 
       # ==========================
-      # 常用设备（默认勾选常用三剑客）
+      # 常用设备（默认勾选三大主力）
       # ==========================
 
       device_rax3000m:
@@ -39,15 +39,19 @@ on:
         type: boolean
         default: true
 
-      device_clt_r30b1:
-        description: '创凌 CLT-R30B1 (标准版/16M/32M)'
-        type: boolean
-        default: false
-
       device_clt_r30b1_112m:
         description: '创凌 CLT-R30B1 (112M 大闪存版)'
         type: boolean
         default: true
+
+      # ==========================
+      # 其他可选设备（默认不勾选）
+      # ==========================
+
+      device_clt_r30b1:
+        description: '创凌 CLT-R30B1 (标准版/16M/32M)'
+        type: boolean
+        default: false
 
       device_nx30pro:
         description: 'NX30Pro'
@@ -89,73 +93,28 @@ on:
 jobs:
 
   # =====================================================
-  # 生成设备矩阵
-  # =====================================================
-
-  matrix_prep:
-    runs-on: ubuntu-latest
-    outputs:
-      devices: ${{ steps.set-devices.outputs.devices }}
-
-    steps:
-      - name: Generate Device Matrix
-        id: set-devices
-        run: |
-          DEVICES=()
-
-          [ "${{ inputs.device_rax3000m }}" = "true" ] && DEVICES+=("rax3000m")
-          [ "${{ inputs.device_ct3003 }}" = "true" ] && DEVICES+=("ct3003")
-          [ "${{ inputs.device_clt_r30b1 }}" = "true" ] && DEVICES+=("clt_r30b1")
-          [ "${{ inputs.device_clt_r30b1_112m }}" = "true" ] && DEVICES+=("clt_r30b1_112m")
-          [ "${{ inputs.device_nx30pro }}" = "true" ] && DEVICES+=("nx30pro")
-          [ "${{ inputs.device_ax3000t }}" = "true" ] && DEVICES+=("ax3000t")
-          [ "${{ inputs.device_wr30u }}" = "true" ] && DEVICES+=("wr30u")
-          [ "${{ inputs.device_360t7 }}" = "true" ] && DEVICES+=("360t7")
-
-          CUSTOM="${{ inputs.custom_devices }}"
-          if [ -n "$CUSTOM" ]; then
-              for dev in $CUSTOM
-              do
-                  DEVICES+=("$dev")
-              done
-          fi
-
-          # 保底默认设备
-          if [ ${#DEVICES[@]} -eq 0 ]; then
-              DEVICES+=("rax3000m")
-          fi
-
-          JSON=$(jq -c -n '$ARGS.positional' --args "${DEVICES[@]}")
-          echo "devices=$JSON" >> $GITHUB_OUTPUT
-
-  # =====================================================
-  # 编译任务
+  # 1. 单虚拟机高效编译任务（省时省分钟）
   # =====================================================
 
   build:
-    needs: matrix_prep
     runs-on: ubuntu-24.04
+    timeout-minutes: 360
     permissions:
       contents: write
       discussions: write
 
-    strategy:
-      fail-fast: false
-      matrix:
-        device_alias: ${{ fromJSON(needs.matrix_prep.outputs.devices) }}
-
     steps:
 
       # ================================
-      # 解析仓库
+      # 解析仓库信息
       # ================================
 
       - name: Parse Repository
         id: parse_repo
         run: |
           INPUT="${{ github.event.inputs.source_repo }}"
-          REPO=$(echo "$INPUT" | cut -d':' -f1)
-          BRANCH=$(echo "$INPUT" | cut -d':' -f2)
+          REPO="${INPUT%:*}"
+          BRANCH="${INPUT##*:}"
           KEY=$(echo "$REPO" | tr '/' '_')
 
           echo "repo=$REPO" >> $GITHUB_OUTPUT
@@ -177,7 +136,7 @@ jobs:
           persist-credentials: false
 
       # ================================
-      # 初始化环境
+      # 初始化构建环境
       # ================================
 
       - name: Initialize Build Environment
@@ -197,33 +156,27 @@ jobs:
           sudo timedatectl set-timezone Asia/Shanghai
 
       # ================================
-      # dl cache
+      # 缓存加载 (DL & CCache)
       # ================================
 
       - name: Cache DL
+        if: ${{ !inputs.clear_cache }}
         uses: actions/cache@v4
         with:
           path: dl
-          key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.clear_cache && github.run_id || 'default' }}
+          key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}
           restore-keys: |
             ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
-      # ================================
-      # ccache
-      # ================================
-
       - name: Cache CCache
+        if: ${{ !inputs.clear_cache }}
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_alias }}-${{ inputs.clear_cache && github.run_id || 'default' }}
+          key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}
           restore-keys: |
-            ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-${{ matrix.device_alias }}-
+            ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-
             ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
-
-      # ================================
-      # 清理 Cache（勾选时）
-      # ================================
 
       - name: Clear Caches If Requested
         if: ${{ inputs.clear_cache }}
@@ -234,60 +187,51 @@ jobs:
           [ -x "$(command -v ccache)" ] && ccache -C && ccache -z
 
       # ================================
-      # feeds 依赖更新与清洗
+      # Feeds 依赖更新与清洗
       # ================================
 
       - name: Update Feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-          # 递归全盘清理 mihomo 源码（防止旧版本 Golang 编译报错）
-          find package/ feeds/ -type d -name "mihomo" -exec rm -rf {} + 2>/devnull || true
+          find package/ feeds/ -type d -name "mihomo" -exec rm -rf {} + 2>/dev/null || true
 
       # ================================
-      # 动态设备配置 (核心逻辑)
+      # 动态写入选中的所有设备节点 (单次出多包)
       # ================================
 
-      - name: Load Config And Detect Device
+      - name: Load Config And Enable Devices
         id: set_device
         run: |
           CONFIG_NAME="${{ github.event.inputs.config_file }}"
-          ALIAS="${{ matrix.device_alias }}"
           BRANCH="${{ steps.parse_repo.outputs.branch }}"
 
-          echo "============================"
-          echo "Alias : $ALIAS"
-          echo "Branch: $BRANCH"
-          echo "============================"
+          # 1. 搜集所有勾选的别名
+          SELECTED_ALIASES=()
+          [ "${{ inputs.device_rax3000m }}" = "true" ] && SELECTED_ALIASES+=("rax3000m")
+          [ "${{ inputs.device_ct3003 }}" = "true" ] && SELECTED_ALIASES+=("ct3003")
+          [ "${{ inputs.device_clt_r30b1_112m }}" = "true" ] && SELECTED_ALIASES+=("clt_r30b1_112m")
+          [ "${{ inputs.device_clt_r30b1 }}" = "true" ] && SELECTED_ALIASES+=("clt_r30b1")
+          [ "${{ inputs.device_nx30pro }}" = "true" ] && SELECTED_ALIASES+=("nx30pro")
+          [ "${{ inputs.device_ax3000t }}" = "true" ] && SELECTED_ALIASES+=("ax3000t")
+          [ "${{ inputs.device_wr30u }}" = "true" ] && SELECTED_ALIASES+=("wr30u")
+          [ "${{ inputs.device_360t7 }}" = "true" ] && SELECTED_ALIASES+=("360t7")
 
-          # 1. 查找基础 config
-          FOUND_CONFIG=""
-
-          if [[ "$BRANCH" == *"21.02"* ]]; then
-              case "$ALIAS" in
-                  rax3000m)
-                    FOUND_CONFIG="21.02.7-rax3000m-nand-byst-mtwifi-cfg-usb.config"
-                    ;;
-                  ct3003)
-                    FOUND_CONFIG="21.02.7-ct3003-byst-mtwifi-cfg.config"
-                    ;;
-                  clt_r30b1|clt_r30b1_112m)
-                    FOUND_CONFIG="21.02.7-r30b1-112M-byst-mtwifi-cfg.config"
-                    ;;
-                  nx30pro)
-                    FOUND_CONFIG="21.02.7-nx30pro-mtwifi-cfg.config"
-                    ;;
-                  *)
-                    FOUND_CONFIG="$CONFIG_NAME"
-                    ;;
-              esac
-          else
-              FOUND_CONFIG="$CONFIG_NAME"
+          CUSTOM="${{ inputs.custom_devices }}"
+          if [ -n "$CUSTOM" ]; then
+              read -ra CUSTOM_DEVS <<< "$CUSTOM"
+              for dev in "${CUSTOM_DEVS[@]}"; do
+                  [ -n "$dev" ] && SELECTED_ALIASES+=("$dev")
+              done
           fi
 
-          CONFIG_PATH=""
+          [ ${#SELECTED_ALIASES[@]} -eq 0 ] && SELECTED_ALIASES+=("rax3000m")
 
+          echo "📋 本次选中的设备别名: ${SELECTED_ALIASES[*]}"
+
+          # 2. 定位配置文件
+          FOUND_CONFIG="$CONFIG_NAME"
+          CONFIG_PATH=""
           if [ -f "$FOUND_CONFIG" ]; then
               CONFIG_PATH="$FOUND_CONFIG"
           elif [ -f "defconfig/$FOUND_CONFIG" ]; then
@@ -295,13 +239,13 @@ jobs:
           fi
 
           if [ -z "$CONFIG_PATH" ]; then
-              echo "❌ Config不存在: $FOUND_CONFIG"
+              echo "❌ 找不到配置文件: $FOUND_CONFIG"
               exit 1
           fi
 
-          echo "Using config: $CONFIG_PATH"
+          cp -f "$CONFIG_PATH" .config
 
-          # 2. 根据 config 判断 target 前缀
+          # 3. 判断芯片 Target 前缀
           if grep -q "CONFIG_TARGET_mediatek_mt7981=y" "$CONFIG_PATH"; then
               TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE"
               PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE"
@@ -312,120 +256,7 @@ jobs:
               TARGET_SERIES="filogic"
           fi
 
-          echo "Target prefix: $TARGET_PREFIX"
-
-          # 3. 自动设备节点检测
-          detect_device_node()
-          {
-              local alias="$1"
-              local cfg="$2"
-              local candidates=()
-
-              case "$alias" in
-                clt_r30b1)
-                    candidates=(
-                      creatlentem_clt-r30b1
-                      mt7981-clt-r30b1
-                    )
-                    ;;
-                clt_r30b1_112m)
-                    candidates=(
-                      creatlentem_clt-r30b1-112m
-                      mt7981-clt-r30b1-112M
-                      mt7981-clt-r30b1-112m
-                    )
-                    ;;
-                rax3000m)
-                    candidates=(
-                      cmcc_rax3000m
-                      cmcc_rax3000me
-                      cmcc_rax3000m-emmc
-                    )
-                    ;;
-                ct3003)
-                    candidates=(
-                      cetron_ct3003
-                      cetron_ct3003-ubootmod
-                    )
-                    ;;
-                nx30pro)
-                    candidates=(
-                      h3c_magic-nx30-pro
-                      h3c_nx30pro
-                      h3c_magic-nx30-pro-mtkuboot
-                    )
-                    ;;
-                ax3000t)
-                    candidates=(
-                      xiaomi_mi-router-ax3000t
-                      xiaomi_mi-router-ax3000t-ubootmod
-                    )
-                    ;;
-                wr30u)
-                    candidates=(
-                      xiaomi_mi-router-wr30u-112m
-                      xiaomi_redmi-router-wr30u
-                      xiaomi_mi-router-wr30u-ubootmod
-                    )
-                    ;;
-                360t7)
-                    candidates=(
-                      qihoo_360t7
-                      mt7981-360-t7-108M
-                    )
-                    ;;
-                *)
-                    candidates=( "$alias" )
-                    ;;
-              esac
-
-              # 精确匹配候选名称
-              for dev in "${candidates[@]}"
-              do
-                  if grep -q "^CONFIG_TARGET_DEVICE_.*_DEVICE_${dev}=y" "$cfg"; then
-                      echo "$dev"
-                      return 0
-                  fi
-              done
-
-              # Fallback 模糊搜索（按名称长度降序，优先保证后缀命中的准确度）
-              NORMAL_ALIAS=$(echo "$alias" | tr '_' '-')
-
-              MATCH=$(grep "^CONFIG_TARGET_DEVICE_.*_DEVICE_.*=y" "$cfg" \
-                | grep -i "$NORMAL_ALIAS" \
-                | sed -E 's/^CONFIG_TARGET_DEVICE_.*_DEVICE_//;s/=y//' \
-                | awk '{ print length, $0 }' | sort -rn | cut -d" " -f2- \
-                | head -n1)
-
-              if [ -n "$MATCH" ]; then
-                  echo "$MATCH"
-                  return 0
-              fi
-
-              echo ""
-          }
-
-          NODE_NAME=$(detect_device_node "$ALIAS" "$CONFIG_PATH")
-
-          if [ -z "$NODE_NAME" ]; then
-              echo "❌ 无法匹配设备节点"
-              echo "Alias : $ALIAS"
-              echo "Config: $CONFIG_PATH"
-              grep "^CONFIG_TARGET_DEVICE_.*_DEVICE_.*=y" "$CONFIG_PATH" || true
-              exit 1
-          fi
-
-          echo ""
-          echo "🎯 Device detected: $NODE_NAME"
-          echo "===== Device Verify in Config ====="
-          grep "CONFIG_TARGET_DEVICE_.*${NODE_NAME}=y" "$CONFIG_PATH" || true
-          echo "==================================="
-
-          echo "node_name=$NODE_NAME" >> $GITHUB_OUTPUT
-
-          # 4. 写入 .config
-          cp -f "$CONFIG_PATH" .config
-
+          # 清除配置中原有的默认设备节点
           sed -i "\|^${TARGET_PREFIX}_|d" .config
           sed -i "\|^${PKG_PREFIX}_|d" .config
 
@@ -437,23 +268,69 @@ jobs:
               echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
           fi
 
-          echo "${TARGET_PREFIX}_${NODE_NAME}=y" >> .config
-          echo "${PKG_PREFIX}_${NODE_NAME}=\"\"" >> .config
+          # 4. 节点匹配函数
+          detect_device_node()
+          {
+              local alias="$1"
+              local cfg="$2"
+              local candidates=()
+
+              case "$alias" in
+                clt_r30b1) candidates=( creatlentem_clt-r30b1 mt7981-clt-r30b1 ) ;;
+                clt_r30b1_112m) candidates=( creatlentem_clt-r30b1-112m mt7981-clt-r30b1-112M mt7981-clt-r30b1-112m ) ;;
+                rax3000m) candidates=( cmcc_rax3000m cmcc_rax3000me cmcc_rax3000m-emmc ) ;;
+                ct3003) candidates=( cetron_ct3003 cetron_ct3003-ubootmod ) ;;
+                nx30pro) candidates=( h3c_magic-nx30-pro h3c_nx30pro h3c_magic-nx30-pro-mtkuboot ) ;;
+                ax3000t) candidates=( xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-ubootmod ) ;;
+                wr30u) candidates=( xiaomi_mi-router-wr30u-112m xiaomi_redmi-router-wr30u xiaomi_mi-router-wr30u-ubootmod ) ;;
+                360t7) candidates=( qihoo_360t7 mt7981-360-t7-108M ) ;;
+                *) candidates=( "$alias" ) ;;
+              esac
+
+              for dev in "${candidates[@]}"; do
+                  if grep -q "^CONFIG_TARGET_DEVICE_.*_DEVICE_${dev}=y" "$cfg"; then
+                      echo "$dev"
+                      return 0
+                  fi
+              done
+
+              NORMAL_ALIAS=$(echo "$alias" | tr '_' '-')
+              MATCH=$(grep "^CONFIG_TARGET_DEVICE_.*_DEVICE_.*=y" "$cfg" \
+                | grep -i "$NORMAL_ALIAS" \
+                | sed -E 's/^CONFIG_TARGET_DEVICE_.*_DEVICE_//;s/=y//' \
+                | awk '{ print length, $0 }' | sort -rn | cut -d" " -f2- \
+                | head -n1)
+
+              if [ -n "$MATCH" ]; then
+                  echo "$MATCH"
+                  return 0
+              fi
+              echo ""
+          }
+
+          # 5. 一次性将所有选中的设备开启标识注入 .config
+          ENABLED_DEVICES=()
+          for alias in "${SELECTED_ALIASES[@]}"; do
+              NODE=$(detect_device_node "$alias" "$CONFIG_PATH")
+              if [ -n "$NODE" ]; then
+                  echo "🎯 开启设备构建节点: $NODE (源别名: $alias)"
+                  echo "${TARGET_PREFIX}_${NODE}=y" >> .config
+                  echo "${PKG_PREFIX}_${NODE}=\"\"" >> .config
+                  ENABLED_DEVICES+=("$NODE")
+              else
+                  echo "⚠️ 未能识别别名 $alias 的节点，已忽略"
+              fi
+          done
+
           echo "CONFIG_CCACHE=y" >> .config
 
-          # 5. defconfig 验证
+          # 6. 生成基础扩展配置
           make defconfig
 
-          echo "====== Device Verify ======"
-          if ! grep -q "${TARGET_PREFIX}_${NODE_NAME}=y" .config; then
-              echo "❌ defconfig删除设备节点"
-              exit 1
-          fi
-
-          echo "✅ Device OK"
+          echo "summary_devices=${ENABLED_DEVICES[*]}" >> $GITHUB_OUTPUT
 
       # ================================
-      # 下载源码依赖包
+      # 下载依赖包
       # ================================
 
       - name: Download Packages
@@ -463,7 +340,7 @@ jobs:
           make download -j1 V=s
 
       # ================================
-      # 执行固件编译
+      # 执行一次编译（同时生成所有选中设备的固件）
       # ================================
 
       - name: Build Firmware
@@ -497,18 +374,17 @@ jobs:
       - name: Upload Build Log On Failure
         if: failure()
         run: |
-          NODE_NAME="${{ steps.set_device.outputs.node_name }}"
           mkdir -p failure_logs
           [ -f ".config" ] && cp -f .config failure_logs/config.buildinfo
           [ -d "logs" ] && cp -rf logs/ failure_logs/
-          find . -name "*.log" -exec cp -f {} failure_logs/ \; 2>/devnull || true
+          find . -name "*.log" -exec cp -f {} failure_logs/ \; 2>/dev/null || true
         continue-on-error: true
 
       - name: Upload Logs Artifact
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: Build_Failure_Logs_${{ steps.set_device.outputs.node_name }}
+          name: Build_Failure_Logs
           path: failure_logs/
 
       # ================================
@@ -518,12 +394,14 @@ jobs:
       - name: Organize Firmware Files
         id: organize
         run: |
-          NODE_NAME="${{ steps.set_device.outputs.node_name }}"
           mkdir -p release_files
 
-          [ -f ".config" ] && cp -f .config release_files/${NODE_NAME}.config
+          CONFIG_SHORT=$(basename "${{ github.event.inputs.config_file }}" .config)
+          echo "config_short=$CONFIG_SHORT" >> $GITHUB_OUTPUT
 
-          # 收集所有目标固件镜像及引导文件
+          [ -f ".config" ] && cp -f .config release_files/build.config
+
+          # 提取所有生成的各设备固件
           find bin/targets/ -type f \( \
             -name "*.bin" -o \
             -name "*.trx" -o \
@@ -536,12 +414,11 @@ jobs:
             -name "*.manifest" -o \
             -name "*buildinfo*" \
           \) | while read -r FILE; do
-            FILENAME=$(basename "$FILE")
-            cp -f "$FILE" "release_files/${NODE_NAME}-${FILENAME}"
+            cp -f "$FILE" release_files/
           done
 
-          # 打包 bin/targets 目录作为保底备份
-          tar --exclude='*/packages' -czf "release_files/bin_targets_${NODE_NAME}.tar.gz" -C bin targets
+          # 打包完整备份
+          tar --exclude='*/packages' -czf release_files/bin_targets_all.tar.gz -C bin targets
 
           cd release_files
           sha256sum * > sha256sums.txt
@@ -562,7 +439,7 @@ jobs:
             exit 1
           fi
 
-          TAG_NAME="Build-${NODE_NAME}-${{ github.run_number }}"
+          TAG_NAME="Build-MT7981-${{ github.run_number }}"
           BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
           END_TIME=$(date +%s)
           START_TIME="${{ steps.parse_repo.outputs.start_time }}"
@@ -574,30 +451,29 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
 
       # ================================
-      # 上传 Artifacts 及 Release
+      # 上传 Artifacts 及打包发布 Release
       # ================================
 
       - name: Upload Firmware to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          # 去掉 config 文件名的后缀，保证制品包名称美观
-          name: ImmortalWrt_${{ steps.set_device.outputs.node_name }}_${{ sed -E 's/\.config$//' <<< github.event.inputs.config_file }}
+          name: ImmortalWrt_MT7981_Firmwares_${{ steps.organize.outputs.config_short }}
           path: release_files/
 
       - name: Release Firmware to GitHub Releases
         uses: softprops/action-gh-release@v2
-        if: steps.organize.outputs.status == 'success' && !cancelled()
+        if: steps.organize.outputs.status == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.organize.outputs.release_tag }}
-          name: "${{ steps.set_device.outputs.node_name }} Firmware Run #${{ github.run_number }}"
+          name: "MT7981 Multi-Device Firmware Run #${{ github.run_number }}"
           body: |
             ### 🛠 编译参数信息
             - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
             - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
             - **配置文件**: `${{ github.event.inputs.config_file }}`
-            - **目标设备**: `${{ steps.set_device.outputs.node_name }}`
+            - **构建设备**: `${{ steps.set_device.outputs.summary_devices }}`
             - **清理缓存**: `${{ github.event.inputs.clear_cache }}`
             - **编译时间**: `${{ steps.organize.outputs.build_time }}`
             - **总计耗时**: `约 ${{ steps.organize.outputs.elapsed_min }} 分钟`
@@ -606,11 +482,40 @@ jobs:
           overwrite_files: true
           files: release_files/*
 
-      - name: Delete Old Releases
-        uses: dev-drprasad/delete-older-releases@v0.3.0
-        if: steps.organize.outputs.status == 'success' && !cancelled()
-        with:
-          keep_latest: 10
-          delete_tags: true
+  # =====================================================
+  # 2. 独立 Release 保留与清理 Job
+  # =====================================================
+
+  cleanup:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: success()
+
+    steps:
+      - name: Delete Old Build-MT7981-* Releases & Tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 正在扫描以 Build-MT7981- 开头的旧 Release..."
+
+          mapfile -t OLD_TAGS < <(
+            gh release list --limit 100 --json tagName --jq '.[].tagName' \
+              | grep '^Build-MT7981-' \
+              | tail -n +11
+          )
+
+          if [ ${#OLD_TAGS[@]} -eq 0 ]; then
+            echo "✨ 没有需要清理的旧 Release。"
+            exit 0
+          fi
+
+          for tag in "${OLD_TAGS[@]}"; do
+            if [ -n "$tag" ]; then
+              echo "🗑️ 正在删除旧 Release 及 Git Tag: $tag"
+              gh release delete "$tag" --yes --cleanup-tag || true
+            fi
+          done
+
+          echo "✅ 清理完毕，已保留最近 10 个构建 Release。"
