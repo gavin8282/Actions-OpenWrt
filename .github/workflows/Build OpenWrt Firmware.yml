@@ -16,13 +16,14 @@ on:
           - 'chasey-dev/immortalwrt-mt798x-rebase:25.12'
 
       config_file:
-        description: '选择配置文件'
+        description: '选择配置文件 (仅24.10/25.12生效，21.02会自动匹配专属config)'
         required: true
-        default: 'mt7981-ax3000_dae.config'
+        default: '24.10-rax3000m_dae.config'
         type: choice
         options:
           - 'mt7981-ax3000.config'
           - 'mt7981-ax3000_dae.config'
+          - '24.10-rax3000m_dae.config'
 
       # --- 常用设备勾选区 ---
       device_rax3000m:
@@ -36,38 +37,33 @@ on:
         default: false
 
       device_clt_r30b1:
-        description: '创凌 CLT-R30B1'
-        type: boolean
-        default: false
-
-      device_clt_r30b1_112m:
-        description: '创凌 CLT-R30B1 112M/112m'
-        type: boolean
-        default: false
-
-      device_ax3000t:
-        description: '小米 AX3000T (xiaomi_mi-router-ax3000t)'
-        type: boolean
-        default: false
-
-      device_wr30u:
-        description: '小米/联通 WR30U (xiaomi_mi-router-wr30u)'
+        description: '创凌 CLT-R30B1 / 112M'
         type: boolean
         default: false
 
       device_nx30pro:
-        description: '华硕/新华三 NX30Pro (h3c_nx30pro / h3c_magic-nx30-pro)'
+        description: '华硕/新华三 NX30Pro'
+        type: boolean
+        default: false
+
+      device_ax3000t:
+        description: '小米 AX3000T'
+        type: boolean
+        default: false
+
+      device_wr30u:
+        description: '小米/联通 WR30U'
         type: boolean
         default: false
 
       device_360t7:
-        description: '360 T7 (qihoo_360t7 / mt7981-360-t7-108M)'
+        description: '360 T7'
         type: boolean
         default: false
 
       # --- 自定义任意设备节点框 ---
       custom_devices:
-        description: '自定义其他设备 Node (用空格分隔，如: abt_asr3000 jcg_q30-pro zbtlink_zbt-z8102ax)'
+        description: '自定义其他设备 Node (用空格分隔，如: abt_asr3000 jcg_q30-pro)'
         required: false
         type: string
         default: ''
@@ -88,14 +84,12 @@ jobs:
           DEVICES=()
           [ "${{ inputs.device_rax3000m }}" == "true" ] && DEVICES+=("rax3000m")
           [ "${{ inputs.device_ct3003 }}" == "true" ] && DEVICES+=("ct3003")
-          [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("clt_r30b1")
-          [ "${{ inputs.device_clt_r30b1_112m }}" == "true" ] && DEVICES+=("clt_r30b1_112m")
+          [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("clt_r30b1_112m")
+          [ "${{ inputs.device_nx30pro }}" == "true" ] && DEVICES+=("nx30pro")
           [ "${{ inputs.device_ax3000t }}" == "true" ] && DEVICES+=("ax3000t")
           [ "${{ inputs.device_wr30u }}" == "true" ] && DEVICES+=("wr30u")
-          [ "${{ inputs.device_nx30pro }}" == "true" ] && DEVICES+=("nx30pro")
           [ "${{ inputs.device_360t7 }}" == "true" ] && DEVICES+=("360t7")
 
-          # 读取手填的自定义设备
           CUSTOM_INPUT="${{ inputs.custom_devices }}"
           if [ -n "$CUSTOM_INPUT" ]; then
             for dev in $CUSTOM_INPUT; do
@@ -113,6 +107,10 @@ jobs:
   build:
     needs: matrix_prep
     runs-on: ubuntu-24.04
+    # ➕ 显式配置 GITHUB_TOKEN 的写入权限，彻底解决 403 报错
+    permissions:
+      contents: write
+      discussions: write
     strategy:
       fail-fast: false
       matrix:
@@ -192,97 +190,83 @@ jobs:
         BRANCH="${{ steps.parse_repo.outputs.branch }}"
         ALIAS="${{ matrix.device_alias }}"
         
+        # 1. 判断分支架构类型与 21.02 专属 Config 匹配逻辑
         FOUND_CONFIG=""
-        if [ -f "defconfig/$CONFIG_NAME" ]; then
-          FOUND_CONFIG="defconfig/$CONFIG_NAME"
-        elif [ -f "$CONFIG_NAME" ]; then
-          FOUND_CONFIG="$CONFIG_NAME"
-        fi
-
-        if [ -z "$FOUND_CONFIG" ]; then
-          echo "❌ Error: Config file $CONFIG_NAME not found!"
-          exit 1
-        fi
-        
-        echo "✅ Using config file: $FOUND_CONFIG"
-        cp -f "$FOUND_CONFIG" .config
-
-        # 1. 判断 Target 架构类型前缀 (21.02 是 mt7981，24.10/25.12 是 filogic)
         if [[ "$BRANCH" == *"21.02"* ]]; then
           TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE"
           PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE"
           echo "CONFIG_TARGET_mediatek=y" >> .config
           echo "CONFIG_TARGET_mediatek_mt7981=y" >> .config
+
+          # 自动匹配 21.02 根目录下的专属配置文件
+          case "$ALIAS" in
+            "rax3000m")
+              FOUND_CONFIG="21.02.7-rax3000m-nand-byst-mtwifi-cfg-usb.config"
+              NODE_NAME="cmcc_rax3000m"
+              ;;
+            "ct3003")
+              FOUND_CONFIG="21.02.7-ct3003-byst-mtwifi-cfg.config"
+              NODE_NAME="cetron_ct3003"
+              ;;
+            "clt_r30b1"|"clt_r30b1_112m")
+              FOUND_CONFIG="21.02.7-r30b1-112M-byst-mtwifi-cfg.config"
+              NODE_NAME="mt7981-clt-r30b1-112M"
+              ;;
+            "nx30pro")
+              FOUND_CONFIG="21.02.7-nx30pro-mtwifi-cfg.config"
+              NODE_NAME="h3c_nx30pro"
+              ;;
+            *)
+              FOUND_CONFIG="$CONFIG_NAME"
+              NODE_NAME="$ALIAS"
+              ;;
+          esac
         else
+          # 24.10 / 25.12 filogic 架构逻辑
           TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE"
           PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_filogic_DEVICE"
           echo "CONFIG_TARGET_mediatek=y" >> .config
           echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+
+          FOUND_CONFIG="$CONFIG_NAME"
+
+          case "$ALIAS" in
+            "rax3000m") NODE_NAME="cmcc_rax3000m" ;;
+            "ct3003") NODE_NAME="cetron_ct3003" ;;
+            "clt_r30b1") NODE_NAME=$([[ "$BRANCH" == *"25.12"* ]] && echo "creatlentem_clt-r30b1" || echo "mt7981-clt-r30b1") ;;
+            "clt_r30b1_112m") NODE_NAME=$([[ "$BRANCH" == *"25.12"* ]] && echo "creatlentem_clt-r30b1-112m" || echo "mt7981-clt-r30b1-112M") ;;
+            "ax3000t") NODE_NAME="xiaomi_mi-router-ax3000t" ;;
+            "wr30u") NODE_NAME=$([[ "$BRANCH" == *"25.12"* ]] && echo "xiaomi_mi-router-wr30u-ubootmod" || echo "xiaomi_mi-router-wr30u-112m") ;;
+            "nx30pro") NODE_NAME=$([[ "$BRANCH" == *"25.12"* ]] && echo "h3c_magic-nx30-pro" || echo "h3c_nx30pro") ;;
+            "360t7") NODE_NAME=$([[ "$BRANCH" == *"25.12"* ]] && echo "qihoo_360t7" || echo "mt7981-360-t7-108M") ;;
+            *) NODE_NAME="$ALIAS" ;;
+          esac
         fi
 
-        # 2. 全设备智能转换与适配引擎
-        NODE_NAME=""
-        case "$ALIAS" in
-          "rax3000m")
-            NODE_NAME="cmcc_rax3000m"
-            ;;
-          "ct3003")
-            NODE_NAME="cetron_ct3003"
-            ;;
-          "clt_r30b1")
-            if [[ "$BRANCH" == *"25.12"* ]]; then
-              NODE_NAME="creatlentem_clt-r30b1"
-            else
-              NODE_NAME="mt7981-clt-r30b1"
-            fi
-            ;;
-          "clt_r30b1_112m")
-            if [[ "$BRANCH" == *"25.12"* ]]; then
-              NODE_NAME="creatlentem_clt-r30b1-112m"
-            else
-              NODE_NAME="mt7981-clt-r30b1-112M"
-            fi
-            ;;
-          "ax3000t")
-            NODE_NAME="xiaomi_mi-router-ax3000t"
-            ;;
-          "wr30u")
-            if [[ "$BRANCH" == *"24.10"* ]]; then
-              NODE_NAME="xiaomi_mi-router-wr30u-112m"
-            elif [[ "$BRANCH" == *"21.02"* ]]; then
-              NODE_NAME="xiaomi_mi-router-wr30u-112m"
-            else
-              NODE_NAME="xiaomi_mi-router-wr30u-ubootmod"
-            fi
-            ;;
-          "nx30pro")
-            if [[ "$BRANCH" == *"25.12"* ]]; then
-              NODE_NAME="h3c_magic-nx30-pro"
-            else
-              NODE_NAME="h3c_nx30pro"
-            fi
-            ;;
-          "360t7")
-            if [[ "$BRANCH" == *"25.12"* ]]; then
-              NODE_NAME="qihoo_360t7"
-            else
-              NODE_NAME="mt7981-360-t7-108M"
-            fi
-            ;;
-          *)
-            # 如果是自定义手填的 Node，直接使用用户输入的完整字符串
-            NODE_NAME="$ALIAS"
-            ;;
-        esac
+        # 查找配置文件路径
+        CONFIG_PATH=""
+        if [ -f "$FOUND_CONFIG" ]; then
+          CONFIG_PATH="$FOUND_CONFIG"
+        elif [ -f "defconfig/$FOUND_CONFIG" ]; then
+          CONFIG_PATH="defconfig/$FOUND_CONFIG"
+        fi
+
+        if [ -z "$CONFIG_PATH" ]; then
+          echo "❌ Error: Config file $FOUND_CONFIG not found!"
+          exit 1
+        fi
+        
+        echo "✅ Using config file: $CONFIG_PATH"
+        cp -f "$CONFIG_PATH" .config
 
         echo "node_name=$NODE_NAME" >> $GITHUB_OUTPUT
         echo "🎯 Selected Branch: $BRANCH"
         echo "🎯 Target Device Node: $NODE_NAME"
 
-        # 3. 清理配置文件中原本勾选的所有旧目标设备
+        # 2. 清理配置文件中原本勾选的旧目标设备
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_/d' .config
         
-        # 4. 动态写入选中的目标设备节点
+        # 3. 动态写入选中的目标设备节点
         echo "${TARGET_PREFIX}_${NODE_NAME}=y" >> .config
         echo "${PKG_PREFIX}_${NODE_NAME}=\"\"" >> .config
         echo "CONFIG_CCACHE=y" >> .config
@@ -344,9 +328,10 @@ jobs:
         
         [ -f ".config" ] && cp -f .config release_files/${NODE_NAME}.config
         
-        # 1. 收集所有目标固件镜像及引导文件
+        # 1. 收集所有目标固件镜像及引导文件 (.bin, .trx, .itb, .ubi 等)
         find bin/targets/ -type f \( \
           -name "*.bin" -o \
+          -name "*.trx" -o \
           -name "*.itb" -o \
           -name "*.ubi" -o \
           -name "*sysupgrade*" -o \
@@ -367,9 +352,9 @@ jobs:
         sha256sum * > sha256sums.txt
         cd ..
         
-        # 3. 增强版兼容性校验逻辑（适配各种格式的二进制固件文件）
         IMAGE_COUNT=$(find release_files/ -type f \( \
           -name "*.bin" -o \
+          -name "*.trx" -o \
           -name "*.itb" -o \
           -name "*.ubi" -o \
           -name "*.img" -o \
@@ -378,7 +363,7 @@ jobs:
         \) | wc -l)
         
         if [ "$IMAGE_COUNT" -eq 0 ]; then
-          echo "❌ Error: 未找到任何有效的二进制固件镜像 (.bin/.itb/.ubi/.img)！终止 Release。"
+          echo "❌ Error: 未找到任何有效的二进制固件镜像！终止 Release。"
           exit 1
         fi
         
