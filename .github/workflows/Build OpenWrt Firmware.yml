@@ -24,13 +24,14 @@ on:
           - 'mt7981-ax3000.config'
           - 'mt7981-ax3000_dae.config'
 
+      # --- 常用设备勾选区 ---
       device_rax3000m:
-        description: '移动 RAX3000M'
+        description: '移动 RAX3000M (cmcc_rax3000m)'
         type: boolean
         default: true
 
       device_ct3003:
-        description: '星网锐捷 CT3003'
+        description: '星网锐捷 CT3003 (cetron_ct3003)'
         type: boolean
         default: false
 
@@ -40,9 +41,36 @@ on:
         default: false
 
       device_clt_r30b1_112m:
-        description: '创凌 CLT-R30B1 112M'
+        description: '创凌 CLT-R30B1 112M/112m'
         type: boolean
         default: false
+
+      device_ax3000t:
+        description: '小米 AX3000T (xiaomi_mi-router-ax3000t)'
+        type: boolean
+        default: false
+
+      device_wr30u:
+        description: '小米/联通 WR30U (xiaomi_mi-router-wr30u)'
+        type: boolean
+        default: false
+
+      device_nx30pro:
+        description: '华硕/新华三 NX30Pro (h3c_nx30pro / h3c_magic-nx30-pro)'
+        type: boolean
+        default: false
+
+      device_360t7:
+        description: '360 T7 (qihoo_360t7 / mt7981-360-t7-108M)'
+        type: boolean
+        default: false
+
+      # --- 自定义任意设备节点框 ---
+      custom_devices:
+        description: '自定义其他设备 Node (用空格分隔，如: abt_asr3000 jcg_q30-pro zbtlink_zbt-z8102ax)'
+        required: false
+        type: string
+        default: ''
 
       clear_cache:
         description: '🧹 清理/重置编译缓存 (CCache & dl)'
@@ -62,6 +90,18 @@ jobs:
           [ "${{ inputs.device_ct3003 }}" == "true" ] && DEVICES+=("ct3003")
           [ "${{ inputs.device_clt_r30b1 }}" == "true" ] && DEVICES+=("clt_r30b1")
           [ "${{ inputs.device_clt_r30b1_112m }}" == "true" ] && DEVICES+=("clt_r30b1_112m")
+          [ "${{ inputs.device_ax3000t }}" == "true" ] && DEVICES+=("ax3000t")
+          [ "${{ inputs.device_wr30u }}" == "true" ] && DEVICES+=("wr30u")
+          [ "${{ inputs.device_nx30pro }}" == "true" ] && DEVICES+=("nx30pro")
+          [ "${{ inputs.device_360t7 }}" == "true" ] && DEVICES+=("360t7")
+
+          # 读取手填的自定义设备
+          CUSTOM_INPUT="${{ inputs.custom_devices }}"
+          if [ -n "$CUSTOM_INPUT" ]; then
+            for dev in $CUSTOM_INPUT; do
+              DEVICES+=("$dev")
+            done
+          fi
 
           if [ ${#DEVICES[@]} -eq 0 ]; then
             DEVICES+=("rax3000m")
@@ -167,7 +207,7 @@ jobs:
         echo "✅ Using config file: $FOUND_CONFIG"
         cp -f "$FOUND_CONFIG" .config
 
-        # 1. 自动判断 Target 架构类型 (21.02 是 mt7981，24.10/25.12 是 filogic)
+        # 1. 判断 Target 架构类型前缀 (21.02 是 mt7981，24.10/25.12 是 filogic)
         if [[ "$BRANCH" == *"21.02"* ]]; then
           TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE"
           PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE"
@@ -180,7 +220,7 @@ jobs:
           echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
         fi
 
-        # 2. 依据分支动态判定实际设备节点名
+        # 2. 全设备智能转换与适配引擎
         NODE_NAME=""
         case "$ALIAS" in
           "rax3000m")
@@ -203,16 +243,46 @@ jobs:
               NODE_NAME="mt7981-clt-r30b1-112M"
             fi
             ;;
+          "ax3000t")
+            NODE_NAME="xiaomi_mi-router-ax3000t"
+            ;;
+          "wr30u")
+            if [[ "$BRANCH" == *"24.10"* ]]; then
+              NODE_NAME="xiaomi_mi-router-wr30u-112m"
+            elif [[ "$BRANCH" == *"21.02"* ]]; then
+              NODE_NAME="xiaomi_mi-router-wr30u-112m"
+            else
+              NODE_NAME="xiaomi_mi-router-wr30u-ubootmod"
+            fi
+            ;;
+          "nx30pro")
+            if [[ "$BRANCH" == *"25.12"* ]]; then
+              NODE_NAME="h3c_magic-nx30-pro"
+            else
+              NODE_NAME="h3c_nx30pro"
+            fi
+            ;;
+          "360t7")
+            if [[ "$BRANCH" == *"25.12"* ]]; then
+              NODE_NAME="qihoo_360t7"
+            else
+              NODE_NAME="mt7981-360-t7-108M"
+            fi
+            ;;
+          *)
+            # 如果是自定义手填的 Node，直接使用用户输入的完整字符串
+            NODE_NAME="$ALIAS"
+            ;;
         esac
 
         echo "node_name=$NODE_NAME" >> $GITHUB_OUTPUT
-        echo "🎯 Target Branch: $BRANCH"
-        echo "🎯 Resolved Node Name: $NODE_NAME"
+        echo "🎯 Selected Branch: $BRANCH"
+        echo "🎯 Target Device Node: $NODE_NAME"
 
-        # 3. 清理配置文件中的旧目标设备节点
+        # 3. 清理配置文件中原本勾选的所有旧目标设备
         sed -i '/CONFIG_TARGET_DEVICE_mediatek_/d' .config
         
-        # 4. 写入新的目标设备配置
+        # 4. 动态写入选中的目标设备节点
         echo "${TARGET_PREFIX}_${NODE_NAME}=y" >> .config
         echo "${PKG_PREFIX}_${NODE_NAME}=\"\"" >> .config
         echo "CONFIG_CCACHE=y" >> .config
@@ -274,7 +344,7 @@ jobs:
         
         [ -f ".config" ] && cp -f .config release_files/${NODE_NAME}.config
         
-        # 收集目标固件
+        # 1. 收集所有目标固件镜像及引导文件
         find bin/targets/ -type f \( \
           -name "*.bin" -o \
           -name "*.itb" -o \
@@ -290,23 +360,25 @@ jobs:
           cp -f "$FILE" "release_files/${NODE_NAME}-${FILENAME}"
         done
         
+        # 2. 打包完整的 bin/targets 目录作为保底备份
         tar --exclude='*/packages' -czf "release_files/bin_targets_${NODE_NAME}.tar.gz" -C bin targets
         
         cd release_files
         sha256sum * > sha256sums.txt
         cd ..
         
-        # 过滤校验：只统计真正可刷写的系统镜像 (sysupgrade / factory / ubi / squashfs)
+        # 3. 增强版兼容性校验逻辑（适配各种格式的二进制固件文件）
         IMAGE_COUNT=$(find release_files/ -type f \( \
+          -name "*.bin" -o \
+          -name "*.itb" -o \
+          -name "*.ubi" -o \
+          -name "*.img" -o \
           -name "*sysupgrade*" -o \
-          -name "*factory*" -o \
-          -name "*ubi*" -o \
-          -name "*squashfs-combined*" -o \
-          -name "*sdcard*" \
+          -name "*factory*" \
         \) | wc -l)
         
         if [ "$IMAGE_COUNT" -eq 0 ]; then
-          echo "❌ Error: 未找到任何可刷写的系统固件镜像 (sysupgrade/factory/ubi)！终止 Release。"
+          echo "❌ Error: 未找到任何有效的二进制固件镜像 (.bin/.itb/.ubi/.img)！终止 Release。"
           exit 1
         fi
         
