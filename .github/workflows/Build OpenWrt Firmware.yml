@@ -92,7 +92,6 @@ jobs:
         echo "repo_key=$REPO_KEY" >> $GITHUB_OUTPUT
         echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
 
-    # ⑩ 增加 persist-credentials: false
     - name: Checkout Source Code
       uses: actions/checkout@v4
       with:
@@ -102,7 +101,6 @@ jobs:
         submodules: recursive
         persist-credentials: false
 
-    # ❷ 移除 rename 软件包，防止源定位失败
     - name: Initialization Environment
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -110,7 +108,12 @@ jobs:
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
         curl -fL --retry 5 --retry-delay 3 -o init_env.sh https://build-scripts.immortalwrt.org/init_build_environment.sh
         sudo bash init_env.sh
-        sudo apt-get update && sudo apt-get install -y ccache jq zstd pv
+        
+        # 修复源索引并循环安装依赖，防止单包不存在导致中断
+        sudo apt-get update || true
+        for pkg in ccache jq zstd pv; do
+          sudo apt-get install -y --fix-missing "$pkg" || echo "⚠️ Warning: Failed to install $pkg, skipping..."
+        done
         sudo timedatectl set-timezone "Asia/Shanghai"
 
     - name: Cache dl Directory
@@ -136,8 +139,7 @@ jobs:
         echo "⚠️ 正在清理缓存..."
         rm -rf dl
         mkdir -p dl
-        ccache -C
-        ccache -z
+        [ -x "$(command -v ccache)" ] && ccache -C && ccache -z
 
     - name: Update & Install Feeds
       run: |
@@ -175,22 +177,22 @@ jobs:
         echo "CONFIG_CCACHE=y" >> .config
         make defconfig
 
-    # ❺ 补全 V=s，方便查看源码包下载具体错误
     - name: Download Packages
       run: |
         make download -j$(nproc) || make download -j1 V=s
         find dl -size -1024c -delete
         make download -j1 V=s
 
-    # ❾ 限制编译线程数防 OOM 爆内存
     - name: Build Firmware
       env:
         CCACHE_DIR: ~/.ccache
         CCACHE_COMPRESS: "1"
         CCACHE_COMPRESSLEVEL: "6"
       run: |
-        ccache -M 10G
-        ccache -z
+        if [ -x "$(command -v ccache)" ]; then
+          ccache -M 10G
+          ccache -z
+        fi
         echo "=== 编译前磁盘空间 ==="
         df -h
         
@@ -200,10 +202,11 @@ jobs:
         
         echo "=== 编译后磁盘空间 ==="
         df -h
-        echo "=== CCache 缓存命中统计 ==="
-        ccache -s
+        if [ -x "$(command -v ccache)" ]; then
+          echo "=== CCache 缓存命中统计 ==="
+          ccache -s
+        fi
 
-    # ❸ ✍️ 增加防御性校验，❹ 全盘扫日志
     - name: Upload Build Log On Failure
       if: failure()
       run: |
@@ -220,7 +223,6 @@ jobs:
         name: Build_Failure_Logs_${{ matrix.device_model }}
         path: failure_logs/
 
-    # ❼ 打包排除 packages 目录；❻ 规范变量引用
     - name: Organize Firmware Files
       id: organize
       run: |
@@ -242,7 +244,6 @@ jobs:
           cp -f "$FILE" "release_files/${{ matrix.device_model }}-${FILENAME}"
         done
         
-        # 排除 packages 压缩包
         tar --exclude='*/packages' -czf "release_files/bin_targets_${{ matrix.device_model }}.tar.gz" -C bin targets
         
         cd release_files
@@ -272,7 +273,6 @@ jobs:
         name: ImmortalWrt_${{ matrix.device_model }}_${{ github.event.inputs.config_file }}
         path: release_files/
 
-    # ❽ 开启 overwrite_files
     - name: Release Firmware to GitHub Releases
       uses: softprops/action-gh-release@v2
       if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -295,7 +295,6 @@ jobs:
         overwrite_files: true
         files: release_files/*
 
-    # ❶ 移除无效的 filter_tarball 选项，恢复标准清理
     - name: Delete Old Releases
       uses: dev-drprasad/delete-older-releases@v0.3.0
       if: steps.organize.outputs.status == 'success' && !cancelled()
