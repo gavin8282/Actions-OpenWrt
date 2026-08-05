@@ -44,6 +44,11 @@ on:
         type: boolean
         default: false
 
+      clear_cache:
+        description: '🧹 清理/重置编译缓存 (CCache & dl)'
+        type: boolean
+        default: false
+
 jobs:
   matrix_prep:
     runs-on: ubuntu-latest
@@ -118,6 +123,16 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
+    - name: Clear Caches If Requested
+      if: ${{ inputs.clear_cache }}
+      run: |
+        echo "⚠️ 用户勾选了清理缓存，开始清理旧的 dl 和 ccache 缓存目录..."
+        rm -rf dl
+        rm -rf ~/.ccache/*
+        mkdir -p dl
+        mkdir -p ~/.ccache
+        echo "✅ 本地缓存清理完毕，本次编译将以全新状态（冷启动）运行。"
+
     - name: Update & Install Feeds
       run: |
         ./scripts/feeds update -a
@@ -166,6 +181,7 @@ jobs:
         ccache -z
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
+        echo "=== CCache 缓存命中统计 ==="
         ccache -s
 
     - name: Organize Firmware Files
@@ -185,7 +201,7 @@ jobs:
           -name "*uboot*" \
         \) -exec cp -f {} release_files/ \;
         
-        # 压缩 bin 目录，命名清晰避免被混淆
+        # 压缩 bin 目录
         BIN_ARCHIVE="bin_full_${{ matrix.device_model }}.tar.gz"
         tar -czf "release_files/$BIN_ARCHIVE" bin/
         
@@ -216,6 +232,7 @@ jobs:
           - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
           - **配置文件**: `${{ github.event.inputs.config_file }}`
           - **目标硬件**: `${{ matrix.device_model }}`
+          - **清理缓存**: `${{ github.event.inputs.clear_cache }}`
           - **编译时间**: `${{ steps.organize.outputs.build_time }}`
         draft: false
         prerelease: false
