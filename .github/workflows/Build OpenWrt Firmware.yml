@@ -268,7 +268,17 @@ jobs:
             exit 1
           fi
 
-          TAG_NAME="Build-MT7981-${{ github.run_number }}"
+          # 1. 从分支提取版本号 (例如从 24.10-mtk7981 提取出 24.10)
+          BRANCH_NAME="${{ steps.parse_repo.outputs.branch }}"
+          VER_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+\.[0-9]+' | head -n1)
+          [ -z "$VER_NUM" ] && VER_NUM="24.10"
+
+          # 2. 格式化日期 (年.月.日)
+          BUILD_DATE="$(date +'%Y.%m.%d')"
+
+          # 3. 组成名称: v24.10-MT7981-2026.08.07
+          TAG_NAME="v${VER_NUM}-MT7981-${BUILD_DATE}"
+
           BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
           END_TIME=$(date +%s)
           START_TIME="${{ steps.parse_repo.outputs.start_time }}"
@@ -296,7 +306,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.organize.outputs.release_tag }}
-          name: "MT7981 Firmware Run #${{ github.run_number }}"
+          name: ${{ steps.organize.outputs.release_tag }}
           body: |
             ### 🛠 编译参数信息
             - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
@@ -322,15 +332,15 @@ jobs:
     if: success()
 
     steps:
-      - name: Delete Old Build-MT7981-* Releases & Tags
+      - name: Delete Old MT7981 Releases & Tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔍 正在扫描以 Build-MT7981- 开头的旧 Release..."
+          echo "🔍 正在扫描旧的 MT7981 Release..."
 
           mapfile -t OLD_TAGS < <(
             gh release list --limit 100 --json tagName --jq '.[].tagName' \
-              | grep '^Build-MT7981-' \
+              | grep -E '(-MT7981-|^Build-MT7981-)' \
               | tail -n +11
           )
 
