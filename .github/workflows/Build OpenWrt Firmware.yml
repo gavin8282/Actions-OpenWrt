@@ -17,73 +17,10 @@ on:
           - 'chasey-dev/immortalwrt-mt798x-rebase:25.12'
 
       config_file:
-        description: '基础配置文件'
+        description: 'defconfig 目录下的配置文件文件名'
         required: true
         default: 'mt7981-ax3000_dae.config'
-        type: choice
-        options:
-          - 'mt7981-ax3000.config'
-          - 'mt7981-ax3000_dae.config'
-
-      # ==========================
-      # 常用设备（默认勾选三大主力）
-      # ==========================
-
-      device_rax3000m:
-        description: '移动 RAX3000M (cmcc_rax3000m)'
-        type: boolean
-        default: true
-
-      device_ct3003:
-        description: '星网锐捷 CT3003 (cetron_ct3003)'
-        type: boolean
-        default: true
-
-      device_clt_r30b1_112m:
-        description: '创凌 CLT-R30B1 (112M 大闪存版)'
-        type: boolean
-        default: true
-
-      # ==========================
-      # 其他可选设备（默认不勾选）
-      # ==========================
-
-      device_clt_r30b1:
-        description: '创凌 CLT-R30B1 (标准版/16M/32M)'
-        type: boolean
-        default: false
-
-      device_nx30pro:
-        description: 'NX30Pro'
-        type: boolean
-        default: false
-
-      device_ax3000t:
-        description: '小米 AX3000T'
-        type: boolean
-        default: false
-
-      device_wr30u:
-        description: 'WR30U'
-        type: boolean
-        default: false
-
-      device_360t7:
-        description: '360 T7'
-        type: boolean
-        default: false
-
-      # ==========================
-      # 自定义设备
-      # ==========================
-
-      custom_devices:
-        description: >
-          自定义 alias，例如:
-          a10 asr3000 gl-mt3000
-        required: false
         type: string
-        default: ''
 
       clear_cache:
         description: '清理 ccache 和 dl 缓存'
@@ -93,7 +30,7 @@ on:
 jobs:
 
   # =====================================================
-  # 1. 单虚拟机高效编译任务（省时省分钟）
+  # 1. 编译任务
   # =====================================================
 
   build:
@@ -136,7 +73,7 @@ jobs:
           persist-credentials: false
 
       # ================================
-      # 初始化构建环境（已修复 ubuntu-24.04 删源问题）
+      # 初始化构建环境
       # ================================
 
       - name: Initialize Build Environment
@@ -196,137 +133,32 @@ jobs:
           find package/ feeds/ -type d -name "mihomo" -exec rm -rf {} + 2>/dev/null || true
 
       # ================================
-      # 动态写入选中的所有设备节点 (单次出多包)
+      # 直接加载 defconfig 配置文件
       # ================================
 
-      - name: Load Config And Enable Devices
+      - name: Load Defconfig
         id: set_device
         run: |
           CONFIG_NAME="${{ github.event.inputs.config_file }}"
-          BRANCH="${{ steps.parse_repo.outputs.branch }}"
 
-          # 1. 搜集所有勾选的别名
-          SELECTED_ALIASES=()
-          [ "${{ inputs.device_rax3000m }}" = "true" ] && SELECTED_ALIASES+=("rax3000m")
-          [ "${{ inputs.device_ct3003 }}" = "true" ] && SELECTED_ALIASES+=("ct3003")
-          [ "${{ inputs.device_clt_r30b1_112m }}" = "true" ] && SELECTED_ALIASES+=("clt_r30b1_112m")
-          [ "${{ inputs.device_clt_r30b1 }}" = "true" ] && SELECTED_ALIASES+=("clt_r30b1")
-          [ "${{ inputs.device_nx30pro }}" = "true" ] && SELECTED_ALIASES+=("nx30pro")
-          [ "${{ inputs.device_ax3000t }}" = "true" ] && SELECTED_ALIASES+=("ax3000t")
-          [ "${{ inputs.device_wr30u }}" = "true" ] && SELECTED_ALIASES+=("wr30u")
-          [ "${{ inputs.device_360t7 }}" = "true" ] && SELECTED_ALIASES+=("360t7")
-
-          CUSTOM="${{ inputs.custom_devices }}"
-          if [ -n "$CUSTOM" ]; then
-              read -ra CUSTOM_DEVS <<< "$CUSTOM"
-              for dev in "${CUSTOM_DEVS[@]}"; do
-                  [ -n "$dev" ] && SELECTED_ALIASES+=("$dev")
-              done
-          fi
-
-          [ ${#SELECTED_ALIASES[@]} -eq 0 ] && SELECTED_ALIASES+=("rax3000m")
-
-          echo "📋 本次选中的设备别名: ${SELECTED_ALIASES[*]}"
-
-          # 2. 定位配置文件
-          FOUND_CONFIG="$CONFIG_NAME"
           CONFIG_PATH=""
-          if [ -f "$FOUND_CONFIG" ]; then
-              CONFIG_PATH="$FOUND_CONFIG"
-          elif [ -f "defconfig/$FOUND_CONFIG" ]; then
-              CONFIG_PATH="defconfig/$FOUND_CONFIG"
+          if [ -f "defconfig/$CONFIG_NAME" ]; then
+              CONFIG_PATH="defconfig/$CONFIG_NAME"
+          elif [ -f "$CONFIG_NAME" ]; then
+              CONFIG_PATH="$CONFIG_NAME"
           fi
 
           if [ -z "$CONFIG_PATH" ]; then
-              echo "❌ 找不到配置文件: $FOUND_CONFIG"
+              echo "❌ 在仓库中未找到配置文件: $CONFIG_NAME"
               exit 1
           fi
 
+          echo "🎯 正在应用配置文件: $CONFIG_PATH"
           cp -f "$CONFIG_PATH" .config
-
-          # 3. 判断芯片 Target 前缀
-          if grep -q "CONFIG_TARGET_mediatek_mt7981=y" "$CONFIG_PATH"; then
-              TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE"
-              PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_mt7981_DEVICE"
-              TARGET_SERIES="mt7981"
-          else
-              TARGET_PREFIX="CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE"
-              PKG_PREFIX="CONFIG_TARGET_DEVICE_PACKAGES_mediatek_filogic_DEVICE"
-              TARGET_SERIES="filogic"
-          fi
-
-          # 清除配置中原有的默认设备节点
-          sed -i "\|^${TARGET_PREFIX}_|d" .config
-          sed -i "\|^${PKG_PREFIX}_|d" .config
-
-          if [ "$TARGET_SERIES" == "mt7981" ]; then
-              echo "CONFIG_TARGET_mediatek=y" >> .config
-              echo "CONFIG_TARGET_mediatek_mt7981=y" >> .config
-          else
-              echo "CONFIG_TARGET_mediatek=y" >> .config
-              echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
-          fi
-
-          # 4. 节点匹配函数
-          detect_device_node()
-          {
-              local alias="$1"
-              local cfg="$2"
-              local candidates=()
-
-              case "$alias" in
-                clt_r30b1) candidates=( creatlentem_clt-r30b1 mt7981-clt-r30b1 ) ;;
-                clt_r30b1_112m) candidates=( creatlentem_clt-r30b1-112m mt7981-clt-r30b1-112M mt7981-clt-r30b1-112m ) ;;
-                rax3000m) candidates=( cmcc_rax3000m cmcc_rax3000me cmcc_rax3000m-emmc ) ;;
-                ct3003) candidates=( cetron_ct3003 cetron_ct3003-ubootmod ) ;;
-                nx30pro) candidates=( h3c_magic-nx30-pro h3c_nx30pro h3c_magic-nx30-pro-mtkuboot ) ;;
-                ax3000t) candidates=( xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-ubootmod ) ;;
-                wr30u) candidates=( xiaomi_mi-router-wr30u-112m xiaomi_redmi-router-wr30u xiaomi_mi-router-wr30u-ubootmod ) ;;
-                360t7) candidates=( qihoo_360t7 mt7981-360-t7-108M ) ;;
-                *) candidates=( "$alias" ) ;;
-              esac
-
-              for dev in "${candidates[@]}"; do
-                  if grep -q "^CONFIG_TARGET_DEVICE_.*_DEVICE_${dev}=y" "$cfg"; then
-                      echo "$dev"
-                      return 0
-                  fi
-              done
-
-              NORMAL_ALIAS=$(echo "$alias" | tr '_' '-')
-              MATCH=$(grep "^CONFIG_TARGET_DEVICE_.*_DEVICE_.*=y" "$cfg" \
-                | grep -i "$NORMAL_ALIAS" \
-                | sed -E 's/^CONFIG_TARGET_DEVICE_.*_DEVICE_//;s/=y//' \
-                | awk '{ print length, $0 }' | sort -rn | cut -d" " -f2- \
-                | head -n1)
-
-              if [ -n "$MATCH" ]; then
-                  echo "$MATCH"
-                  return 0
-              fi
-              echo ""
-          }
-
-          # 5. 一次性将所有选中的设备开启标识注入 .config
-          ENABLED_DEVICES=()
-          for alias in "${SELECTED_ALIASES[@]}"; do
-              NODE=$(detect_device_node "$alias" "$CONFIG_PATH")
-              if [ -n "$NODE" ]; then
-                  echo "🎯 开启设备构建节点: $NODE (源别名: $alias)"
-                  echo "${TARGET_PREFIX}_${NODE}=y" >> .config
-                  echo "${PKG_PREFIX}_${NODE}=\"\"" >> .config
-                  ENABLED_DEVICES+=("$NODE")
-              else
-                  echo "⚠️ 未能识别别名 $alias 的节点，已忽略"
-              fi
-          done
 
           echo "CONFIG_CCACHE=y" >> .config
 
-          # 6. 生成基础扩展配置
           make defconfig
-
-          echo "summary_devices=${ENABLED_DEVICES[*]}" >> $GITHUB_OUTPUT
 
       # ================================
       # 下载依赖包
@@ -339,7 +171,7 @@ jobs:
           make download -j1 V=s
 
       # ================================
-      # 执行一次编译（同时生成所有选中设备的固件）
+      # 执行编译
       # ================================
 
       - name: Build Firmware
@@ -400,7 +232,6 @@ jobs:
 
           [ -f ".config" ] && cp -f .config release_files/build.config
 
-          # 提取所有生成的各设备固件
           find bin/targets/ -type f \( \
             -name "*.bin" -o \
             -name "*.trx" -o \
@@ -416,7 +247,6 @@ jobs:
             cp -f "$FILE" release_files/
           done
 
-          # 打包完整备份
           tar --exclude='*/packages' -czf release_files/bin_targets_all.tar.gz -C bin targets
 
           cd release_files
@@ -466,13 +296,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.organize.outputs.release_tag }}
-          name: "MT7981 Multi-Device Firmware Run #${{ github.run_number }}"
+          name: "MT7981 Firmware Run #${{ github.run_number }}"
           body: |
             ### 🛠 编译参数信息
             - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
             - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
             - **配置文件**: `${{ github.event.inputs.config_file }}`
-            - **构建设备**: `${{ steps.set_device.outputs.summary_devices }}`
             - **清理缓存**: `${{ github.event.inputs.clear_cache }}`
             - **编译时间**: `${{ steps.organize.outputs.build_time }}`
             - **总计耗时**: `约 ${{ steps.organize.outputs.elapsed_min }} 分钟`
@@ -482,7 +311,7 @@ jobs:
           files: release_files/*
 
   # =====================================================
-  # 2. 独立 Release 保留与清理 Job
+  # 2. 清理历史 Release Job
   # =====================================================
 
   cleanup:
