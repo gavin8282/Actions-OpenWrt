@@ -219,7 +219,7 @@ jobs:
           path: failure_logs/
 
       # ================================
-      # 整理编译产物
+      # 整理编译产物（已移除全量打包，防止超2GB限额）
       # ================================
 
       - name: Organize Firmware Files
@@ -232,6 +232,7 @@ jobs:
 
           [ -f ".config" ] && cp -f .config release_files/build.config
 
+          # 仅提取最终刷机镜像与元数据
           find bin/targets/ -type f \( \
             -name "*.bin" -o \
             -name "*.trx" -o \
@@ -246,8 +247,6 @@ jobs:
           \) | while read -r FILE; do
             cp -f "$FILE" release_files/
           done
-
-          tar --exclude='*/packages' -czf release_files/bin_targets_all.tar.gz -C bin targets
 
           cd release_files
           sha256sum * > sha256sums.txt
@@ -268,15 +267,12 @@ jobs:
             exit 1
           fi
 
-          # 1. 从分支提取版本号 (例如从 24.10-mtk7981 提取出 24.10)
+          # 提取版本号与日期
           BRANCH_NAME="${{ steps.parse_repo.outputs.branch }}"
           VER_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+\.[0-9]+' | head -n1)
           [ -z "$VER_NUM" ] && VER_NUM="24.10"
 
-          # 2. 格式化日期 (年.月.日)
           BUILD_DATE="$(date +'%Y.%m.%d')"
-
-          # 3. 组成名称: v24.10-MT7981-2026.08.07
           TAG_NAME="v${VER_NUM}-MT7981-${BUILD_DATE}"
 
           BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
