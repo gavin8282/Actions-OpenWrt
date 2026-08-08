@@ -49,7 +49,7 @@ jobs:
       - name: Parse Repository
         id: parse_repo
         run: |
-          INPUT="${{ github.event.inputs.source_repo }}"
+          INPUT="${{ inputs.source_repo }}"
           REPO="${INPUT%:*}"
           BRANCH="${INPUT##*:}"
           KEY=$(echo "$REPO" | tr '/' '_')
@@ -109,9 +109,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}
+          key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.config_file }}
           restore-keys: |
-            ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.event.inputs.config_file }}-
+            ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.config_file }}-
             ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
       - name: Clear Caches If Requested
@@ -139,7 +139,7 @@ jobs:
       - name: Load Defconfig
         id: set_device
         run: |
-          CONFIG_NAME="${{ github.event.inputs.config_file }}"
+          CONFIG_NAME="${{ inputs.config_file }}"
 
           CONFIG_PATH=""
           if [ -f "defconfig/$CONFIG_NAME" ]; then
@@ -219,7 +219,7 @@ jobs:
           path: failure_logs/
 
       # ================================
-      # 整理编译产物（已移除全量打包，防止超2GB限额）
+      # 整理编译产物
       # ================================
 
       - name: Organize Firmware Files
@@ -227,12 +227,12 @@ jobs:
         run: |
           mkdir -p release_files
 
-          CONFIG_SHORT=$(basename "${{ github.event.inputs.config_file }}" .config)
+          CONFIG_SHORT=$(basename "${{ inputs.config_file }}" .config)
           echo "config_short=$CONFIG_SHORT" >> $GITHUB_OUTPUT
 
           [ -f ".config" ] && cp -f .config release_files/build.config
 
-          # 仅提取最终刷机镜像与元数据
+          # 仅提取刷机用固件文件及配置元数据
           find bin/targets/ -type f \( \
             -name "*.bin" -o \
             -name "*.trx" -o \
@@ -267,7 +267,7 @@ jobs:
             exit 1
           fi
 
-          # 提取版本号与日期
+          # 从分支动态提取主版本号 (例如从 24.10-mtk7981 提取 24.10)
           BRANCH_NAME="${{ steps.parse_repo.outputs.branch }}"
           VER_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+\.[0-9]+' | head -n1)
           [ -z "$VER_NUM" ] && VER_NUM="24.10"
@@ -307,8 +307,8 @@ jobs:
             ### 🛠 编译参数信息
             - **源码仓库**: `${{ steps.parse_repo.outputs.repo }}`
             - **分支版本**: `${{ steps.parse_repo.outputs.branch }}`
-            - **配置文件**: `${{ github.event.inputs.config_file }}`
-            - **清理缓存**: `${{ github.event.inputs.clear_cache }}`
+            - **配置文件**: `${{ inputs.config_file }}`
+            - **清理缓存**: `${{ inputs.clear_cache }}`
             - **编译时间**: `${{ steps.organize.outputs.build_time }}`
             - **总计耗时**: `约 ${{ steps.organize.outputs.elapsed_min }} 分钟`
           draft: false
