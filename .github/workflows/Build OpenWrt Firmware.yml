@@ -64,7 +64,7 @@ jobs:
       # ================================
 
       - name: Checkout Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ steps.parse_repo.outputs.repo }}
           ref: ${{ steps.parse_repo.outputs.branch }}
