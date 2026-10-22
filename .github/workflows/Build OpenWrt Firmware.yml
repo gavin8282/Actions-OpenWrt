@@ -17,13 +17,46 @@ on:
           - 'chasey-dev/immortalwrt-mt798x-rebase:25.12'
 
       config_file:
-        description: '配置文件路径 (支持 configs/ 目录下或源码 defconfig/ 下的文件)'
+        description: '选择基础配置文件'
         required: true
-        default: 'mt7981-ax3000_dae.config'
-        type: string
+        default: 'configs/mt7981-ax3000_dae.config'
+        type: choice
+        options:
+          - 'configs/mt7981-ax3000_dae.config'
+          - 'configs/24.10-rax3000m_dae.config'
+          - 'defconfig/mt7981-ax3000.config'
+          - 'defconfig/mt7986-ax6000.config'
 
-      devices:
-        description: '指定构建设备 (留空默认编译全部设备；多选以空格分隔，如: cmcc_rax3000m h3c_nx30pro)'
+      device_preset:
+        description: '常用机型快捷下拉选择'
+        required: true
+        default: 'ALL # 编译配置中的全部设备'
+        type: choice
+        options:
+          - 'ALL # 编译配置中的全部设备'
+          - 'cmcc_rax3000m # 移动 CMCC RAX3000M (NAND)'
+          - 'cmcc_rax3000m-emmc # 移动 CMCC RAX3000M (eMMC)'
+          - 'h3c_magic-nx30-pro # 新华三 H3C NX30 Pro'
+          - 'xiaomi_mi-router-ax3000t # 小米 Xiaomi AX3000T'
+          - 'xiaomi_mi-router-wr30u-stock # 小米 Xiaomi WR30U (原厂固件布局)'
+          - 'qihoo_360t7 # 奇虎 360 T7'
+          - 'glinet_gl-mt3000 # 格联 GL.iNet MT3000 (Beryl AX)'
+          - 'glinet_gl-mt2500 # 格联 GL.iNet MT2500 (Brume 2)'
+          - 'asus_rt-ax52 # 华硕 ASUS RT-AX52'
+          - 'cmcc_a10-stock # 中移物联 CMCC A10 (原厂布局)'
+          - 'cmcc_a10-ubootmod # 中移物联 CMCC A10 (ubootmod)'
+          - 'cetron_ct3003 # 烽火 HG680 / CT3003'
+          - 'konka_komi-a31 # 康佳 KONKA KOMI A31'
+          - 'jcg_q30-pro # 捷稀 JCG Q30 Pro'
+          - 'cudy_wr3000-v1 # 库迪 Cudy WR3000 v1'
+          - 'cudy_tr3000-v1 # 库迪 Cudy TR3000 v1'
+          - 'creatlentem_clt-r30b1-112m # 创凌 Creatlentem CLT-R30B1 (112M)'
+          - 'abt_asr3000 # 安博通 ABT ASR3000'
+          - 'livinet_zr-3020 # 小娱 Livinet ZR-3020'
+          - 'CUSTOM # 手动在下方输入框指定多台设备'
+
+      custom_devices:
+        description: '手动指定设备 (选 CUSTOM 时生效，以空格分隔多个机型)'
         required: false
         default: ''
         type: string
@@ -205,21 +238,41 @@ jobs:
           echo "🎯 正在应用配置文件: $CONFIG_PATH"
           cp -f "$CONFIG_PATH" .config
 
-          SELECTED_DEVICES="${{ inputs.devices }}"
-          if [ -n "$SELECTED_DEVICES" ]; then
-              echo "⚙️ 用户指定构建设备: $SELECTED_DEVICES"
+          SELECTED_PRESET="${{ inputs.device_preset }}"
+          PRESET_DEV="${SELECTED_PRESET%% #*}"
+
+          FINAL_DEVICES=""
+          if [ "$PRESET_DEV" = "ALL" ]; then
+              echo "🎯 构建模式: 编译配置文件中预设的全部设备"
+          elif [ "$PRESET_DEV" = "CUSTOM" ]; then
+              FINAL_DEVICES="${{ inputs.custom_devices }}"
+              echo "🎯 构建模式: 手动指定设备 ($FINAL_DEVICES)"
+          else
+              FINAL_DEVICES="$PRESET_DEV"
+              echo "🎯 构建模式: 下拉单选设备 ($FINAL_DEVICES)"
+          fi
+
+          if [ -n "$FINAL_DEVICES" ]; then
+              echo "⚙️ 正在应用设备过滤器..."
               # 禁用所有默认设备的选中状态
               sed -i 's/^CONFIG_TARGET_DEVICE_.*=y/# &/' .config
               sed -i 's/CONFIG_TARGET_MULTI_PROFILE=y/# CONFIG_TARGET_MULTI_PROFILE is not set/' .config
 
               # 依次激活用户指定的设备
-              for dev in $SELECTED_DEVICES; do
+              for dev in $FINAL_DEVICES; do
                   clean_dev=$(echo "$dev" | tr -d ' ' | sed 's/^CONFIG_TARGET_DEVICE_//; s/=y//')
                   if [ -n "$clean_dev" ]; then
                       echo "✅ 激活目标设备: $clean_dev"
-                      # 模糊兼容带前缀或仅设备名的写法
+                      # 智能适配 24.10 / 25.12 命名规则（如 360t7 / nx30-pro）
+                      # 1. 尝试直接匹配
                       if grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}" .config; then
                           sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${clean_dev}=y/" .config
+                      elif [ "$clean_dev" = "qihoo_360t7" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-360-t7-108M" .config; then
+                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-360-t7-108M=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_mt7981-360-t7-108M=y/" .config
+                      elif [ "$clean_dev" = "h3c_magic-nx30-pro" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_h3c_nx30pro" .config; then
+                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_h3c_nx30pro=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_h3c_nx30pro=y/" .config
+                      elif [ "$clean_dev" = "creatlentem_clt-r30b1-112m" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-clt-r30b1-112M" .config; then
+                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-clt-r30b1-112M=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_mt7981-clt-r30b1-112M=y/" .config
                       else
                           echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${clean_dev}=y" >> .config
                       fi
