@@ -17,7 +17,7 @@ on:
           - 'chasey-dev/immortalwrt-mt798x-rebase:25.12'
 
       config_file:
-        description: 'defconfig 目录下的配置文件文件名'
+        description: '配置文件路径 (支持 configs/ 目录下或源码 defconfig/ 下的文件)'
         required: true
         default: 'mt7981-ax3000_dae.config'
         type: string
@@ -50,6 +50,7 @@ jobs:
         id: parse_repo
         run: |
           INPUT="${{ inputs.source_repo }}"
+          REPO="${INPUT%:* Kirchen}"
           REPO="${INPUT%:*}"
           BRANCH="${INPUT##*:}"
           KEY=$(echo "$REPO" | tr '/' '_')
@@ -60,17 +61,27 @@ jobs:
           echo "start_time=$(date +%s)" >> $GITHUB_OUTPUT
 
       # ================================
-      # 拉取源码
+      # 检出 Actions-OpenWrt (当前配置仓库)
+      # ================================
+
+      - name: Checkout Actions Runner Configs
+        uses: actions/checkout@v4
+        with:
+          path: runner-configs
+
+      # ================================
+      # 拉取 OpenWrt 源码
       # ================================
 
       - name: Checkout Source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           repository: ${{ steps.parse_repo.outputs.repo }}
           ref: ${{ steps.parse_repo.outputs.branch }}
           fetch-depth: 1
           submodules: recursive
           persist-credentials: false
+          path: openwrt
 
       # ================================
       # 初始化构建环境
@@ -99,7 +110,7 @@ jobs:
         if: ${{ !inputs.clear_cache }}
         uses: actions/cache@v4
         with:
-          path: dl
+          path: openwrt/dl
           key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}
           restore-keys: |
             ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
@@ -118,9 +129,21 @@ jobs:
         if: ${{ inputs.clear_cache }}
         run: |
           echo "⚠️ 正在清理 ccache 和 dl 缓存..."
-          rm -rf dl
-          mkdir -p dl
+          rm -rf openwrt/dl
+          mkdir -p openwrt/dl
           [ -x "$(command -v ccache)" ] && ccache -C && ccache -z
+
+      # ================================
+      # 执行 DIY 脚本 1 (Feeds 前)
+      # ================================
+
+      - name: Run DIY Script 1
+        run: |
+          if [ -f "runner-configs/diy-part1.sh" ]; then
+            chmod +x runner-configs/diy-part1.sh
+            cd openwrt
+            $GITHUB_WORKSPACE/runner-configs/diy-part1.sh
+          fi
 
       # ================================
       # Feeds 依赖更新与清洗
@@ -128,28 +151,48 @@ jobs:
 
       - name: Update Feeds
         run: |
+          cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           find package/ feeds/ -type d -name "mihomo" -exec rm -rf {} + 2>/dev/null || true
 
       # ================================
-      # 直接加载 defconfig 配置文件
+      # 执行 DIY 脚本 2 (Feeds 后)
       # ================================
 
-      - name: Load Defconfig
+      - name: Run DIY Script 2
+        run: |
+          if [ -f "runner-configs/diy-part2.sh" ]; then
+            chmod +x runner-configs/diy-part2.sh
+            cd openwrt
+            $GITHUB_WORKSPACE/runner-configs/diy-part2.sh
+          fi
+
+      # ================================
+      # 加载配置文件 (优先 runner-configs/configs，其次源码仓库)
+      # ================================
+
+      - name: Load Config File
         id: set_device
         run: |
+          cd openwrt
           CONFIG_NAME="${{ inputs.config_file }}"
-
           CONFIG_PATH=""
-          if [ -f "defconfig/$CONFIG_NAME" ]; then
+
+          # 1. 查找 runner-configs 中的配置
+          if [ -f "$GITHUB_WORKSPACE/runner-configs/configs/$CONFIG_NAME" ]; then
+              CONFIG_PATH="$GITHUB_WORKSPACE/runner-configs/configs/$CONFIG_NAME"
+          elif [ -f "$GITHUB_WORKSPACE/runner-configs/$CONFIG_NAME" ]; then
+              CONFIG_PATH="$GITHUB_WORKSPACE/runner-configs/$CONFIG_NAME"
+          # 2. 查找 openwrt 源码内的 defconfig
+          elif [ -f "defconfig/$CONFIG_NAME" ]; then
               CONFIG_PATH="defconfig/$CONFIG_NAME"
           elif [ -f "$CONFIG_NAME" ]; then
               CONFIG_PATH="$CONFIG_NAME"
           fi
 
           if [ -z "$CONFIG_PATH" ]; then
-              echo "❌ 在仓库中未找到配置文件: $CONFIG_NAME"
+              echo "❌ 在工作流配置库与源码仓库中均未找到: $CONFIG_NAME"
               exit 1
           fi
 
@@ -157,7 +200,6 @@ jobs:
           cp -f "$CONFIG_PATH" .config
 
           echo "CONFIG_CCACHE=y" >> .config
-
           make defconfig
 
       # ================================
@@ -166,6 +208,7 @@ jobs:
 
       - name: Download Packages
         run: |
+          cd openwrt
           make download -j$(nproc) || make download -j1 V=s
           find dl -size -1024c -delete
           make download -j1 V=s
@@ -180,6 +223,7 @@ jobs:
           CCACHE_COMPRESS: "1"
           CCACHE_COMPRESSLEVEL: "6"
         run: |
+          cd openwrt
           if [ -x "$(command -v ccache)" ]; then
             ccache -M 10G
             ccache -z
@@ -189,7 +233,7 @@ jobs:
 
           NPROC=$(( $(nproc) + 1 ))
           echo -e "Starting compile with ${NPROC} threads..."
-          make -j${NPROC} || make -j${NPROC} V=s || make -j1 V=s
+          make -j${NPROC} || make -j1 V=s
 
           echo "=== 编译后磁盘空间 ==="
           df -h
@@ -206,9 +250,9 @@ jobs:
         if: failure()
         run: |
           mkdir -p failure_logs
-          [ -f ".config" ] && cp -f .config failure_logs/config.buildinfo
-          [ -d "logs" ] && cp -rf logs/ failure_logs/
-          find . -name "*.log" -exec cp -f {} failure_logs/ \; 2>/dev/null || true
+          [ -f "openwrt/.config" ] && cp -f openwrt/.config failure_logs/config.buildinfo
+          [ -d "openwrt/logs" ] && cp -rf openwrt/logs/ failure_logs/
+          find openwrt -name "*.log" -exec cp -f {} failure_logs/ \; 2>/dev/null || true
         continue-on-error: true
 
       - name: Upload Logs Artifact
@@ -230,10 +274,10 @@ jobs:
           CONFIG_SHORT=$(basename "${{ inputs.config_file }}" .config)
           echo "config_short=$CONFIG_SHORT" >> $GITHUB_OUTPUT
 
-          [ -f ".config" ] && cp -f .config release_files/build.config
+          [ -f "openwrt/.config" ] && cp -f openwrt/.config release_files/build.config
 
-          # 仅提取刷机用固件文件及配置元数据
-          find bin/targets/ -type f \( \
+          # 提取刷机固件及配置元数据
+          find openwrt/bin/targets/ -type f \( \
             -name "*.bin" -o \
             -name "*.trx" -o \
             -name "*.itb" -o \
@@ -267,7 +311,7 @@ jobs:
             exit 1
           fi
 
-          # 从分支动态提取主版本号 (例如从 24.10-mtk7981 提取 24.10)
+          # 提取版本号
           BRANCH_NAME="${{ steps.parse_repo.outputs.branch }}"
           VER_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+\.[0-9]+' | head -n1)
           [ -z "$VER_NUM" ] && VER_NUM="24.10"
