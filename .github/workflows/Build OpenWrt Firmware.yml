@@ -22,6 +22,12 @@ on:
         default: 'mt7981-ax3000_dae.config'
         type: string
 
+      devices:
+        description: '指定构建设备 (留空默认编译全部设备；多选以空格分隔，如: cmcc_rax3000m h3c_nx30pro)'
+        required: false
+        default: ''
+        type: string
+
       clear_cache:
         description: '清理 ccache 和 dl 缓存'
         type: boolean
@@ -198,6 +204,28 @@ jobs:
 
           echo "🎯 正在应用配置文件: $CONFIG_PATH"
           cp -f "$CONFIG_PATH" .config
+
+          SELECTED_DEVICES="${{ inputs.devices }}"
+          if [ -n "$SELECTED_DEVICES" ]; then
+              echo "⚙️ 用户指定构建设备: $SELECTED_DEVICES"
+              # 禁用所有默认设备的选中状态
+              sed -i 's/^CONFIG_TARGET_DEVICE_.*=y/# &/' .config
+              sed -i 's/CONFIG_TARGET_MULTI_PROFILE=y/# CONFIG_TARGET_MULTI_PROFILE is not set/' .config
+
+              # 依次激活用户指定的设备
+              for dev in $SELECTED_DEVICES; do
+                  clean_dev=$(echo "$dev" | tr -d ' ' | sed 's/^CONFIG_TARGET_DEVICE_//; s/=y//')
+                  if [ -n "$clean_dev" ]; then
+                      echo "✅ 激活目标设备: $clean_dev"
+                      # 模糊兼容带前缀或仅设备名的写法
+                      if grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}" .config; then
+                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${clean_dev}=y/" .config
+                      else
+                          echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${clean_dev}=y" >> .config
+                      fi
+                  fi
+              done
+          fi
 
           echo "CONFIG_CCACHE=y" >> .config
           make defconfig

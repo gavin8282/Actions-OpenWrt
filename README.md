@@ -45,7 +45,12 @@
 2. 在左侧列表中选择 **Build OpenWrt Firmware**。
 3. 点击 **Run workflow** 下拉菜单：
    - **选择源码仓库及分支**：根据需要选择 24.10 / 25.12 等。
-   - **配置文件文件名**：填入 `configs/` 下的文件名（如 `mt7981-ax3000_dae.config`）。
+   - **配置文件文件名**：默认 `mt7981-ax3000_dae.config`。
+   - **指定构建设备（单选/多选）**：
+     - **留空**：默认编译配置文件中勾选的全部设备。
+     - **单选**：填入单个设备标识，如 `cmcc_rax3000m`。
+     - **多选**：以空格分隔多个机型，如 `cmcc_rax3000m h3c_nx30pro xiaomi_mi-router-ax3000t`。
+     - *常见 MT7981 设备名*：`cmcc_rax3000m`、`h3c_nx30pro`、`xiaomi_mi-router-ax3000t`、`xiaomi_mi-router-wr30u-stock`、`cetron_ct3003`、`mt7981-360-t7-108M` 等。
    - **清理缓存**：需要重新全量构建时勾选。
 4. 构建完成后，前往 **Releases** 或对应运行页面的 **Artifacts** 处下载固件。
 
