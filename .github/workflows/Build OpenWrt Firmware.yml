@@ -145,7 +145,7 @@ jobs:
           sudo timedatectl set-timezone Asia/Shanghai
 
       # ================================
-      # 缓存加载 (DL & CCache)
+      # 缓存加载 (DL & CCache - 自动增量更新)
       # ================================
 
       - name: Cache DL
@@ -153,7 +153,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: openwrt/dl
-          key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}
+          key: ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-dl-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
 
@@ -162,7 +162,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.config_file }}
+          key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.config_file }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.config_file }}-
             ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-
