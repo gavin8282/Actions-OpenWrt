@@ -12,3 +12,6 @@
 
 # Modify default LAN IP to 172.16.19.254/24
 sed -i 's/192.168.1.1/172.16.19.254/g' package/base-files/files/bin/config_generate
+
+# Ensure root user has no password (empty password for direct login)
+sed -i 's/^root:.*:/root::/' package/base-files/files/etc/shadow
