@@ -161,7 +161,9 @@ jobs:
         if: ${{ !inputs.clear_cache }}
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
+          path: |
+            ~/.ccache
+            openwrt/.ccache
           key: ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.config_file }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-ccache-${{ steps.parse_repo.outputs.repo_key }}-${{ steps.parse_repo.outputs.branch }}-${{ inputs.config_file }}-
@@ -284,6 +286,7 @@ jobs:
           fi
 
           echo "CONFIG_CCACHE=y" >> .config
+          echo "CONFIG_CCACHE_DIR=\"$HOME/.ccache\"" >> .config
           make defconfig
 
       # ================================
@@ -307,10 +310,10 @@ jobs:
           CCACHE_COMPRESS: "1"
           CCACHE_COMPRESSLEVEL: "6"
         run: |
+          mkdir -p ~/.ccache openwrt/.ccache
           cd openwrt
           if [ -x "$(command -v ccache)" ]; then
             ccache -M 10G
-            ccache -z
           fi
           echo "=== 编译前磁盘空间 ==="
           df -h
@@ -322,8 +325,12 @@ jobs:
           echo "=== 编译后磁盘空间 ==="
           df -h
           if [ -x "$(command -v ccache)" ]; then
-            echo "=== CCache 缓存命中统计 ==="
+            echo "=== CCache 缓存命中统计 (~/.ccache) ==="
             ccache -s
+            if [ -d ".ccache" ] && [ "$(ls -A .ccache 2>/dev/null)" ]; then
+              echo "=== CCache 缓存命中统计 (openwrt/.ccache) ==="
+              CCACHE_DIR="$(pwd)/.ccache" ccache -s
+            fi
           fi
 
       # ================================
