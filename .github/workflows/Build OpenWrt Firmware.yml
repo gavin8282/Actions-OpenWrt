@@ -19,9 +19,11 @@ on:
       config_file:
         description: '选择基础配置文件'
         required: true
-        default: 'configs/mt7981-ax3000_dae.config'
+        default: 'configs/25.12-mtk7981_dae.config'
         type: choice
         options:
+          - 'configs/25.12-mtk7981_dae.config'
+          - 'configs/25.12-rax3000m_dae.config'
           - 'configs/mt7981-ax3000_dae.config'
           - 'configs/24.10-rax3000m_dae.config'
           - 'defconfig/mt7981-ax3000.config'
@@ -74,7 +76,7 @@ jobs:
 
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 720
     permissions:
       contents: write
       discussions: write
