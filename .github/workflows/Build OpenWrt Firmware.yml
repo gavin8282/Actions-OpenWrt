@@ -363,6 +363,13 @@ jobs:
           # 提取刷机固件及配置元数据
           find openwrt/bin/targets/ -type f \( \
             -name "*.bin" -o \
+            -name "*.img" -o \
+            -name "*.img.gz" -o \
+            -name "*.iso" -o \
+            -name "*.vmdk" -o \
+            -name "*.qcow2" -o \
+            -name "*.vdi" -o \
+            -name "*.vhdx" -o \
             -name "*.trx" -o \
             -name "*.itb" -o \
             -name "*.ubi" -o \
@@ -382,10 +389,16 @@ jobs:
 
           IMAGE_COUNT=$(find release_files/ -type f \( \
             -name "*.bin" -o \
+            -name "*.img" -o \
+            -name "*.img.gz" -o \
+            -name "*.iso" -o \
+            -name "*.vmdk" -o \
+            -name "*.qcow2" -o \
+            -name "*.vdi" -o \
+            -name "*.vhdx" -o \
             -name "*.trx" -o \
             -name "*.itb" -o \
             -name "*.ubi" -o \
-            -name "*.img" -o \
             -name "*sysupgrade*" -o \
             -name "*factory*" \
           \) | wc -l)
@@ -395,13 +408,22 @@ jobs:
             exit 1
           fi
 
-          # 提取版本号
+          # 提取版本号与目标架构平台
           BRANCH_NAME="${{ steps.parse_repo.outputs.branch }}"
           VER_NUM=$(echo "$BRANCH_NAME" | grep -oE '[0-9]+\.[0-9]+' | head -n1)
-          [ -z "$VER_NUM" ] && VER_NUM="24.10"
+          [ -z "$VER_NUM" ] && VER_NUM="25.12"
+
+          CONFIG_LOWER=$(echo "${{ inputs.config_file }}" | tr '[:upper:]' '[:lower:]')
+          if echo "$CONFIG_LOWER" | grep -q "x86"; then
+            TARGET_PLATFORM="x86_64"
+          elif echo "$CONFIG_LOWER" | grep -q "7986"; then
+            TARGET_PLATFORM="MT7986"
+          else
+            TARGET_PLATFORM="MT7981"
+          fi
 
           BUILD_DATE="$(date +'%Y.%m.%d')"
-          TAG_NAME="v${VER_NUM}-MT7981-${BUILD_DATE}"
+          TAG_NAME="v${VER_NUM}-${TARGET_PLATFORM}-${BUILD_DATE}"
 
           BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
           END_TIME=$(date +%s)
@@ -420,7 +442,7 @@ jobs:
       - name: Upload Firmware to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt_MT7981_Firmwares_${{ steps.organize.outputs.config_short }}
+          name: OpenWrt_Firmwares_${{ steps.organize.outputs.config_short }}
           path: release_files/
 
       - name: Release Firmware to GitHub Releases
@@ -456,16 +478,16 @@ jobs:
     if: success()
 
     steps:
-      - name: Delete Old MT7981 Releases & Tags
+      - name: Delete Old Releases & Tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔍 正在扫描旧的 MT7981 Release..."
+          echo "🔍 正在扫描旧 Release..."
 
           mapfile -t OLD_TAGS < <(
             gh release list --limit 100 --json tagName --jq '.[].tagName' \
-              | grep -E '(-MT7981-|^Build-MT7981-)' \
-              | tail -n +11
+              | grep -E '(-MT7981-|-x86_64-|-MT7986-|^Build-)' \
+              | tail -n +16
           )
 
           if [ ${#OLD_TAGS[@]} -eq 0 ]; then
