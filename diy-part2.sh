@@ -15,3 +15,9 @@ sed -i 's/192.168.1.1/172.16.19.254/g' package/base-files/files/bin/config_gener
 
 # Ensure root user has no password (empty password for direct login)
 sed -i 's/^root:.*:/root::/' package/base-files/files/etc/shadow
+
+# Configure Dropbear: disable password authentication (key-only login)
+if [ -f "package/network/services/dropbear/files/dropbear.config" ]; then
+    sed -i "s/option PasswordAuth 'on'/option PasswordAuth 'off'/g" package/network/services/dropbear/files/dropbear.config
+    sed -i "s/option RootPasswordAuth 'on'/option RootPasswordAuth 'off'/g" package/network/services/dropbear/files/dropbear.config
+fi
