@@ -13,6 +13,5 @@
 # Modify default LAN IP to 172.16.19.254/24
 sed -i 's/192.168.1.1/172.16.19.254/g' package/base-files/files/bin/config_generate
 
-# Ensure root user has no password (empty password for direct login)
-# Using standard hash for empty password ($1$Kn3ybXc9$jqLVkRInLjmpMRWhTlsxN0) so rpcd/crypt validation succeeds
-sed -i 's|^root:[^:]*:|root:\$1\$Kn3ybXc9\$jqLVkRInLjmpMRWhTlsxN0:|' package/base-files/files/etc/shadow
+# Set root default password hash
+sed -i 's|^root:[^:]*:|root:\$5\$gW00AqXbA96VHnY0\$Ph.iV76QIlLkpsNJ6EYEDzHp6N1QY43eGX3Cm2.6j1D:|' package/base-files/files/etc/shadow
