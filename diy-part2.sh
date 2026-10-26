@@ -41,8 +41,9 @@ EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-custom-settings
 
 # 4. Enable BBR and FQ network congestion control by default
+# Put into custom sysctl so it won't conflict with kmod-tcp-bbr's 12-tcp-bbr.conf
 mkdir -p package/base-files/files/etc/sysctl.d
-cat << 'EOF' > package/base-files/files/etc/sysctl.d/12-tcp-bbr.conf
+cat << 'EOF' > package/base-files/files/etc/sysctl.d/99-tcp-bbr.conf
 net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
 EOF
