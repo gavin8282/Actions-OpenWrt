@@ -24,9 +24,8 @@ on:
         type: choice
         options:
           - 'configs/25.12-mtk7981_dae.config'
-          - 'configs/x86_64_dae.config'
-          - 'configs/mt7981-ax3000_dae.config'
           - 'configs/24.10-rax3000m_dae.config'
+          - 'configs/x86_64_dae.config'
           - 'defconfig/mt7981-ax3000.config'
           - 'defconfig/mt7986-ax6000.config'
 
