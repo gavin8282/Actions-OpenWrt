@@ -141,7 +141,7 @@ jobs:
           sudo bash init_env.sh
 
           sudo apt-get update || true
-          sudo apt-get install -y ccache jq zstd pv
+          sudo apt-get install -y ccache jq zstd pv qemu-utils
           # Put ccache in front of PATH so host tools also use ccache
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           sudo timedatectl set-timezone Asia/Shanghai
@@ -398,6 +398,22 @@ jobs:
           \) -exec cp -f {} release_files/ \;
 
           echo "=== release_files/ 内容清单 ==="
+          ls -lh release_files/
+
+          # 为 x86 固件额外自动转换生成 PVE / KVM 专用的 qcow2 与 raw 格式
+          if ls release_files/*combined*.img.gz 1> /dev/null 2>&1; then
+            echo "=== 检测到 x86 固件，正在自动生成 qcow2 与 raw 格式 ==="
+            for img_gz in release_files/*combined*.img.gz; do
+              raw_img="${img_gz%.gz}"
+              echo "解压 $img_gz 为 $raw_img ..."
+              gzip -dc "$img_gz" > "$raw_img"
+              qcow2_file="${raw_img%.img}.qcow2"
+              echo "转换生成 $qcow2_file ..."
+              qemu-img convert -f raw -O qcow2 "$raw_img" "$qcow2_file" 2>/dev/null || true
+            done
+          fi
+
+          echo "=== 最终生成固件清单 ==="
           ls -lh release_files/
 
           cd release_files
