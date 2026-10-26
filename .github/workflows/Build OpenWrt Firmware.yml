@@ -371,7 +371,11 @@ jobs:
 
           [ -f "openwrt/.config" ] && cp -f openwrt/.config release_files/build.config
 
-          # 提取刷机固件及配置元数据
+          echo "=== 正在搜索 openwrt/bin/targets 目录 ==="
+          ls -la openwrt/bin/targets/ || true
+          find openwrt/bin/targets/ -maxdepth 3 -ls || true
+
+          # 提取刷机固件及配置元数据到 release_files
           find openwrt/bin/targets/ -type f \( \
             -name "*.bin" -o \
             -name "*.img" -o \
@@ -386,18 +390,21 @@ jobs:
             -name "*.ubi" -o \
             -name "*sysupgrade*" -o \
             -name "*factory*" -o \
+            -name "*combined*" -o \
             -name "*fip*" -o \
             -name "*uboot*" -o \
             -name "*.manifest" -o \
             -name "*buildinfo*" \
-          \) | while read -r FILE; do
-            cp -f "$FILE" release_files/
-          done
+          \) -exec cp -f {} release_files/ \;
+
+          echo "=== release_files/ 内容清单 ==="
+          ls -lh release_files/
 
           cd release_files
-          sha256sum * > sha256sums.txt
+          sha256sum * > sha256sums.txt 2>/dev/null || true
           cd ..
 
+          # 统计有效的可刷写镜像数量（排除纯文本元数据）
           IMAGE_COUNT=$(find release_files/ -type f \( \
             -name "*.bin" -o \
             -name "*.img" -o \
@@ -410,9 +417,12 @@ jobs:
             -name "*.trx" -o \
             -name "*.itb" -o \
             -name "*.ubi" -o \
+            -name "*combined*" -o \
             -name "*sysupgrade*" -o \
             -name "*factory*" \
-          \) | wc -l)
+          \) | grep -v "sha256sums.txt" | wc -l)
+
+          echo "Found images count: $IMAGE_COUNT"
 
           if [ "$IMAGE_COUNT" -eq 0 ]; then
             echo "❌ Error: 未找到任何有效的二进制固件镜像！终止 Release。"
