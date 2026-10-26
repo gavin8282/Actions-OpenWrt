@@ -14,4 +14,5 @@
 sed -i 's/192.168.1.1/172.16.19.254/g' package/base-files/files/bin/config_generate
 
 # Ensure root user has no password (empty password for direct login)
-sed -i 's/^root:.*:/root::/' package/base-files/files/etc/shadow
+# Using standard hash for empty password ($1$Kn3ybXc9$jqLVkRInLjmpMRWhTlsxN0) so rpcd/crypt validation succeeds
+sed -i 's|^root:[^:]*:|root:\$1\$Kn3ybXc9\$jqLVkRInLjmpMRWhTlsxN0:|' package/base-files/files/etc/shadow
