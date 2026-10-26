@@ -323,7 +323,7 @@ jobs:
 
           NPROC=$(( $(nproc) + 1 ))
           echo -e "Starting compile with ${NPROC} threads..."
-          make -j${NPROC} || make -j1 V=s
+          make -j${NPROC} || make -j1 V=s 2>&1 | tee build_raw.log
 
           echo "=== 编译后磁盘空间 ==="
           df -h
@@ -344,9 +344,10 @@ jobs:
         if: failure()
         run: |
           mkdir -p failure_logs
+          [ -f "openwrt/build_raw.log" ] && tail -n 2000 openwrt/build_raw.log > failure_logs/build_error_tail.log
           [ -f "openwrt/.config" ] && cp -f openwrt/.config failure_logs/config.buildinfo
           [ -d "openwrt/logs" ] && cp -rf openwrt/logs/ failure_logs/
-          find openwrt -name "*.log" -exec cp -f {} failure_logs/ \; 2>/dev/null || true
+          find openwrt -maxdepth 3 -name "*.log" -exec cp -f {} failure_logs/ \; 2>/dev/null || true
         continue-on-error: true
 
       - name: Upload Logs Artifact
