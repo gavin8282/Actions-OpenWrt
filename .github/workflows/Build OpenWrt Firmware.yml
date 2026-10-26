@@ -142,6 +142,8 @@ jobs:
 
           sudo apt-get update || true
           sudo apt-get install -y ccache jq zstd pv
+          # Put ccache in front of PATH so host tools also use ccache
+          echo "/usr/lib/ccache" >> $GITHUB_PATH
           sudo timedatectl set-timezone Asia/Shanghai
 
       # ================================
@@ -285,6 +287,7 @@ jobs:
               done
           fi
 
+          echo "CONFIG_DEVEL=y" >> .config
           echo "CONFIG_CCACHE=y" >> .config
           echo "CONFIG_CCACHE_DIR=\"$HOME/.ccache\"" >> .config
           make defconfig
