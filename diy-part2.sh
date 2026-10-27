@@ -42,3 +42,32 @@ chmod +x package/base-files/files/etc/uci-defaults/99-custom-settings
 
 # Set root default password hash
 sed -i 's|^root:[^:]*:|root:\$5\$gW00AqXbA96VHnY0\$Ph.iV76QIlLkpsNJ6EYEDzHp6N1QY43eGX3Cm2.6j1D:|' package/base-files/files/etc/shadow
+
+# 4. Adaptive kernel tuning for dae eBPF & high-concurrency networking
+# Dynamically adjusts based on hardware RAM (256MB conservative vs 512MB+ high performance)
+mkdir -p package/base-files/files/etc/uci-defaults
+cat << 'EOT' > package/base-files/files/etc/uci-defaults/98-adaptive-tuning
+#!/bin/sh
+TOTAL_RAM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 262144)
+
+if [ "$TOTAL_RAM_KB" -lt 350000 ]; then
+    # 256MB device profile: conservative tuning to protect against OOM
+    MIN_FREE=8192
+    BPF_LIMIT=67108864
+else
+    # 512MB / 1GB+ device profile: high performance
+    MIN_FREE=16384
+    BPF_LIMIT=268435456
+fi
+
+mkdir -p /etc/sysctl.d
+cat << SYSCTL_EOF > /etc/sysctl.d/98-adaptive-tuning.conf
+net.core.netdev_max_backlog = 4096
+net.core.bpf_jit_limit = $BPF_LIMIT
+vm.min_free_kbytes = $MIN_FREE
+SYSCTL_EOF
+
+sysctl -p /etc/sysctl.d/98-adaptive-tuning.conf 2>/dev/null || true
+exit 0
+EOT
+chmod +x package/base-files/files/etc/uci-defaults/98-adaptive-tuning
