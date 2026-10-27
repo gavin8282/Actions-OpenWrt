@@ -323,7 +323,10 @@ jobs:
 
           NPROC=$(( $(nproc) + 1 ))
           echo -e "Starting compile with ${NPROC} threads..."
+          set -o pipefail
           make -j${NPROC} || make -j1 V=s 2>&1 | tee build_raw.log
+          BUILD_STATUS=$?
+          set +o pipefail
 
           echo "=== 编译后磁盘空间 ==="
           df -h
@@ -334,6 +337,11 @@ jobs:
               echo "=== CCache 缓存命中统计 (openwrt/.ccache) ==="
               CCACHE_DIR="$(pwd)/.ccache" ccache -s
             fi
+          fi
+
+          if [ $BUILD_STATUS -ne 0 ]; then
+            echo "❌ Error: 固件编译失败，退出码: $BUILD_STATUS"
+            exit $BUILD_STATUS
           fi
 
       # ================================
