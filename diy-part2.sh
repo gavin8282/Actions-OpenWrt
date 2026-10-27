@@ -44,25 +44,36 @@ chmod +x package/base-files/files/etc/uci-defaults/99-custom-settings
 sed -i 's|^root:[^:]*:|root:\$5\$gW00AqXbA96VHnY0\$Ph.iV76QIlLkpsNJ6EYEDzHp6N1QY43eGX3Cm2.6j1D:|' package/base-files/files/etc/shadow
 
 # 4. Adaptive kernel tuning for dae eBPF & high-concurrency networking
-# Dynamically adjusts based on hardware RAM (256MB conservative vs 512MB+ high performance)
+# Dynamically adjusts based on hardware RAM (256MB aggressive vs 512MB MT7981 full vs 2GB+ x86)
 mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOT' > package/base-files/files/etc/uci-defaults/98-adaptive-tuning
 #!/bin/sh
 TOTAL_RAM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 262144)
 
 if [ "$TOTAL_RAM_KB" -lt 350000 ]; then
-    # 256MB device profile: conservative tuning to protect against OOM
-    MIN_FREE=8192
-    BPF_LIMIT=67108864
+    # 256MB device profile: aggressive yet physically safe
+    MIN_FREE=10240
+    BPF_LIMIT=134217728
+    BACKLOG=8192
+    SOMAXCONN=2048
+elif [ "$TOTAL_RAM_KB" -lt 1500000 ]; then
+    # 512MB ~ 1GB MT7981 / MT7986 router profile: full performance
+    MIN_FREE=24576
+    BPF_LIMIT=335544320
+    BACKLOG=16384
+    SOMAXCONN=4096
 else
-    # 512MB / 1GB+ device profile: high performance
-    MIN_FREE=16384
-    BPF_LIMIT=268435456
+    # 2GB+ x86 / VM profile: extreme throughput
+    MIN_FREE=65536
+    BPF_LIMIT=1073741824
+    BACKLOG=32768
+    SOMAXCONN=16384
 fi
 
 mkdir -p /etc/sysctl.d
 cat << SYSCTL_EOF > /etc/sysctl.d/98-adaptive-tuning.conf
-net.core.netdev_max_backlog = 4096
+net.core.netdev_max_backlog = $BACKLOG
+net.core.somaxconn = $SOMAXCONN
 net.core.bpf_jit_limit = $BPF_LIMIT
 vm.min_free_kbytes = $MIN_FREE
 SYSCTL_EOF
