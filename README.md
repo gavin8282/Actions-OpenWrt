@@ -85,5 +85,17 @@
 
 ---
 
+## 🙏 致谢与上游来源 (Upstream Credits)
+
+本项目代码与构建系统深度依托以下优秀的开源项目与维护者的无私贡献，特此鸣谢：
+
+- **OpenWrt 官方项目**：[openwrt/openwrt](https://github.com/openwrt/openwrt) 提供稳定、纯净的 Linux 嵌入式发行版基准（Linux Kernel 6.12）。
+- **MediaTek 原厂开源 Feeds**：[mediatek/mtk-openwrt-feeds](https://github.com/mediatek/mtk-openwrt-feeds) 提供联发科 Filogic 系列无线与底层芯片接口。
+- **ImmortalWrt 25.12 Rebase**：[chasey-dev/immortalwrt-mt798x-rebase](https://github.com/chasey-dev/immortalwrt-mt798x-rebase) 提供 25.12 分支适配 MTK 闭源驱动（7.6.7.3）与 HNAT/WED 硬件加速的重要补丁。
+- **ImmortalWrt MT798x 6.6**：[padavanonly/immortalwrt-mt798x-6.6](https://github.com/padavanonly/immortalwrt-mt798x-6.6) 提供 24.10 分支内核 6.6 的经典适配与机型支持。
+- **Actions-OpenWrt 基础工作流**：[P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt) 提供优秀的 GitHub Actions 自动化编译流水线架构原型。
+
+---
+
 ## 📄 License
 MIT © [P3TERX](https://p3terx.com) & Contributors
