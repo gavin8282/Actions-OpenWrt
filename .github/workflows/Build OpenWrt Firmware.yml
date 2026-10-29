@@ -11,8 +11,9 @@ on:
         type: choice
         options:
           - 'gavin8282/g-openwrt:25.12-mtk7981'
-          - 'gavin8282/g-openwrt:24.10-mtk7981'
           - 'gavin8282/g-openwrt:openwrt-25.12'
+          - 'gavin8282/g-openwrt:24.10-mtk7981'
+          - 'gavin8282/g-openwrt:openwrt-24.10'
           - 'gavin8282/g-openwrt:21.02-mtk7981'
           - 'padavanonly/immortalwrt-mt798x-6.6:openwrt-24.10-6.6'
           - 'chasey-dev/immortalwrt-mt798x-rebase:25.12'
