@@ -35,6 +35,9 @@ commit luci
 set system.@system[0].timezone='CST-8'
 set system.@system[0].zonename='Asia/Shanghai'
 commit system
+set dropbear.@dropbear[0].PasswordAuth='on'
+set dropbear.@dropbear[0].RootPasswordAuth='on'
+commit dropbear
 EOC
 exit 0
 EOF
