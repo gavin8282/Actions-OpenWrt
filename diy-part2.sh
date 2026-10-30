@@ -31,6 +31,7 @@ mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-custom-settings
 uci -q batch << 'EOC'
 set luci.main.lang='zh_cn'
+set luci.main.mediaurlbase='/luci-static/argon'
 commit luci
 set system.@system[0].timezone='CST-8'
 set system.@system[0].zonename='Asia/Shanghai'
