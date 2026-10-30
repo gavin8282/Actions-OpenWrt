@@ -300,7 +300,7 @@ jobs:
 
           echo "CONFIG_DEVEL=y" >> .config
           echo "CONFIG_CCACHE=y" >> .config
-          echo "CONFIG_CCACHE_DIR=\"$HOME/.ccache\"" >> .config
+          echo "CONFIG_CCACHE_DIR=\"/home/runner/.ccache\"" >> .config
           make defconfig
 
       # ================================
@@ -320,14 +320,19 @@ jobs:
 
       - name: Build Firmware
         env:
-          CCACHE_DIR: ~/.ccache
+          CCACHE_DIR: /home/runner/.ccache
           CCACHE_COMPRESS: "1"
           CCACHE_COMPRESSLEVEL: "6"
+          CCACHE_SLOPPINESS: "include_file_ctime,include_file_mtime,time_macros"
+          CCACHE_BASEDIR: "${{ github.workspace }}/openwrt"
         run: |
-          mkdir -p ~/.ccache openwrt/.ccache
+          mkdir -p /home/runner/.ccache openwrt/staging_dir/host/bin
+          # 建立 staging_dir 内部的 ccache 软链接，确保 OpenWrt 内部交叉编译工具链 100% 优先调用 ccache
+          ln -sf "$(command -v ccache)" openwrt/staging_dir/host/bin/ccache
           cd openwrt
           if [ -x "$(command -v ccache)" ]; then
             ccache -M 10G
+            ccache -z
           fi
           echo "=== 编译前磁盘空间 ==="
           df -h
