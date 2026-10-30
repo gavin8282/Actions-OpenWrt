@@ -144,7 +144,7 @@ jobs:
           sudo bash init_env.sh
 
           sudo apt-get update || true
-          sudo apt-get install -y ccache jq zstd pv qemu-utils
+          sudo apt-get install -y ccache jq zstd pv qemu-utils dwarves
           # Put ccache in front of PATH so host tools also use ccache
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           sudo timedatectl set-timezone Asia/Shanghai
@@ -264,25 +264,33 @@ jobs:
 
           if [ -n "$FINAL_DEVICES" ]; then
               echo "⚙️ 正在应用设备过滤器..."
-              # 禁用所有默认设备的选中状态
+              # 保证 Multi-Profile 开启，支持选择任意单个或多个设备
+              sed -i 's/^# CONFIG_TARGET_MULTI_PROFILE is not set/CONFIG_TARGET_MULTI_PROFILE=y/' .config
+              grep -q "CONFIG_TARGET_MULTI_PROFILE=y" .config || echo "CONFIG_TARGET_MULTI_PROFILE=y" >> .config
+              # 取消全部机型默认勾选，避免打包无关镜像
               sed -i 's/^CONFIG_TARGET_DEVICE_.*=y/# &/' .config
-              sed -i 's/CONFIG_TARGET_MULTI_PROFILE=y/# CONFIG_TARGET_MULTI_PROFILE is not set/' .config
 
               # 依次激活用户指定的设备
               for dev in $FINAL_DEVICES; do
                   clean_dev=$(echo "$dev" | tr -d ' ' | sed 's/^CONFIG_TARGET_DEVICE_//; s/=y//')
                   if [ -n "$clean_dev" ]; then
                       echo "✅ 激活目标设备: $clean_dev"
-                      # 智能适配 24.10 / 25.12 命名规则（如 360t7 / nx30-pro）
-                      # 1. 尝试直接匹配
-                      if grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}" .config; then
-                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${clean_dev}=y/" .config
+                      # 智能适配 24.10 / 25.12 跨分支命名规则
+                      if [ "$clean_dev" = "cmcc_rax3000m-emmc" ] && grep -q "_DEVICE_cmcc_rax3000m-emmc-mtk" .config; then
+                          clean_dev="cmcc_rax3000m-emmc-mtk"
+                      elif [ "$clean_dev" = "cmcc_a10-stock" ] && grep -q "_DEVICE_cmcc_a10=" .config; then
+                          clean_dev="cmcc_a10"
                       elif [ "$clean_dev" = "qihoo_360t7" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-360-t7-108M" .config; then
-                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-360-t7-108M=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_mt7981-360-t7-108M=y/" .config
+                          clean_dev="mt7981-360-t7-108M"
                       elif [ "$clean_dev" = "h3c_magic-nx30-pro" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_h3c_nx30pro" .config; then
-                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_h3c_nx30pro=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_h3c_nx30pro=y/" .config
+                          clean_dev="h3c_nx30pro"
                       elif [ "$clean_dev" = "creatlentem_clt-r30b1-112m" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-clt-r30b1-112M" .config; then
-                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-clt-r30b1-112M=y/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_mt7981-clt-r30b1-112M=y/" .config
+                          clean_dev="mt7981-clt-r30b1-112M"
+                      fi
+
+                      # 正则替换：兼容行末为 =y 或 is not set 的任意情况
+                      if grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}" .config; then
+                          sed -i "s/.*CONFIG_TARGET_DEVICE_.*_DEVICE_${clean_dev}.*/CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${clean_dev}=y/" .config
                       else
                           echo "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_${clean_dev}=y" >> .config
                       fi

@@ -91,3 +91,8 @@ if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mt
     mkdir -p feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network 2>/dev/null || true
     cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js 2>/dev/null || true
 fi
+
+# 6. Pre-patch LuCI network.js to recognize MTK raX/apcliX wireless interfaces at build time
+if [ -f "feeds/luci/modules/luci-base/htdocs/luci-static/resources/network.js" ]; then
+    sed -i 's#/\\^wlan\\\\d+/,#/\\^wlan\\\\d+/,/\\^ra[xiyez]?\\\\d+/,/\\^apcli[xiyez]?\\\\d+/,#' feeds/luci/modules/luci-base/htdocs/luci-static/resources/network.js 2>/dev/null || true
+fi
