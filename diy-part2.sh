@@ -94,6 +94,13 @@ if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mt
 fi
 
 # 6. Pre-patch LuCI network.js to recognize MTK raX/apcliX wireless interfaces at build time
-if [ -f "feeds/luci/modules/luci-base/htdocs/luci-static/resources/network.js" ]; then
-    sed -i 's#/\\^wlan\\\\d+/,#/\\^wlan\\\\d+/,/\\^ra[xiyez]?\\\\d+/,/\\^apcli[xiyez]?\\\\d+/,#' feeds/luci/modules/luci-base/htdocs/luci-static/resources/network.js 2>/dev/null || true
+LUCI_NET_JS="feeds/luci/modules/luci-base/htdocs/luci-static/resources/network.js"
+if [ -f "$LUCI_NET_JS" ] && ! grep -sq 'ra\[xiyez\]' "$LUCI_NET_JS"; then
+    sed -i 's#/\^wlan\\d+/,#/\^wlan\\d+/,/^ra[xiyez]?\\d+/,/^apcli[xiyez]?\\d+/,#' "$LUCI_NET_JS" 2>/dev/null || true
+fi
+
+# 7. Pre-patch LuCI status menu to display MTK closed-source wireless in realtime graphs
+if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json" ]; then
+    mkdir -p feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d 2>/dev/null || true
+    cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d/luci-mod-status.json 2>/dev/null || true
 fi

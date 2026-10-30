@@ -144,7 +144,7 @@ jobs:
           sudo bash init_env.sh
 
           sudo apt-get update || true
-          sudo apt-get install -y ccache jq zstd pv qemu-utils dwarves
+          sudo apt-get install -y ccache jq zstd pv qemu-utils dwarves python3-setuptools python3-pyelftools
           # Put ccache in front of PATH so host tools also use ccache
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           sudo timedatectl set-timezone Asia/Shanghai
@@ -278,7 +278,7 @@ jobs:
                       # 智能适配 24.10 / 25.12 跨分支命名规则
                       if [ "$clean_dev" = "cmcc_rax3000m-emmc" ] && grep -q "_DEVICE_cmcc_rax3000m-emmc-mtk" .config; then
                           clean_dev="cmcc_rax3000m-emmc-mtk"
-                      elif [ "$clean_dev" = "cmcc_a10-stock" ] && grep -q "_DEVICE_cmcc_a10=" .config; then
+                      elif [ "$clean_dev" = "cmcc_a10-stock" ] && grep -q "_DEVICE_cmcc_a10" .config; then
                           clean_dev="cmcc_a10"
                       elif [ "$clean_dev" = "qihoo_360t7" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-360-t7-108M" .config; then
                           clean_dev="mt7981-360-t7-108M"
