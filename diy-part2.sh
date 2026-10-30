@@ -85,3 +85,9 @@ sysctl -p /etc/sysctl.d/98-adaptive-tuning.conf 2>/dev/null || true
 exit 0
 EOT
 chmod +x package/base-files/files/etc/uci-defaults/98-adaptive-tuning
+
+# 5. Pre-install MTK wireless view into LuCI network module to guarantee LuCI Wi-Fi management works out-of-the-box
+if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js" ]; then
+    mkdir -p feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network 2>/dev/null || true
+    cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js 2>/dev/null || true
+fi
