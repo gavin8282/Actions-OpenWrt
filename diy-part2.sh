@@ -23,9 +23,10 @@ sed -i "/delete system.ntp/a \\
 sed -i '/add_list system.ntp.server=.time.cloudflare.com./d' package/base-files/files/bin/config_generate
 sed -i '/add_list system.ntp.server=.time1.google.com./d' package/base-files/files/bin/config_generate
 
-# 3. Set default LuCI language to Simplified Chinese (zh_cn)
+# 3. Set default LuCI language to Simplified Chinese (zh_Hans)
 if [ -d "package/emortal/default-settings/files" ]; then
-    sed -i 's/set luci.main.lang="auto"/set luci.main.lang="zh_cn"/g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+    sed -i 's/set luci.main.lang="auto"/set luci.main.lang="zh_Hans"/g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+    sed -i 's/set luci.main.lang="zh_cn"/set luci.main.lang="zh_Hans"/g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
 fi
 mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-custom-settings
