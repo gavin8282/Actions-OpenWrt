@@ -44,8 +44,8 @@ exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-custom-settings
 
-# Set root default password hash
-sed -i 's|^root:[^:]*:|root:\$5\$gW00AqXbA96VHnY0\$Ph.iV76QIlLkpsNJ6EYEDzHp6N1QY43eGX3Cm2.6j1D:|' package/base-files/files/etc/shadow
+# Set empty root password (no password needed for first login)
+sed -i 's|^root:[^:]*:|root::|' package/base-files/files/etc/shadow
 
 # 4. Adaptive kernel tuning for dae eBPF & high-concurrency networking
 # Dynamically adjusts based on hardware RAM (256MB aggressive vs 512MB MT7981 full vs 2GB+ x86)

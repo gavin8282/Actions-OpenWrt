@@ -50,6 +50,7 @@ on:
           - 'cmcc_a10-stock # 中移物联 CMCC A10 (原厂布局)'
           - 'cmcc_a10-ubootmod # 中移物联 CMCC A10 (ubootmod)'
           - 'cetron_ct3003 # 烽火 HG680 / CT3003 (原厂32M布局)'
+          - 'cetron_ct3003-ubootmod # 烽火 CT3003 (ubootmod布局，.itb格式)'
           - 'cetron_ct3003-112m # 烽火 CT3003 (112M大分区，兼容21.02)'
           - 'konka_komi-a31 # 康佳 KONKA KOMI A31'
           - 'jcg_q30-pro # 捷稀 JCG Q30 Pro'
