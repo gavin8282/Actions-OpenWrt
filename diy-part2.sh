@@ -23,15 +23,14 @@ sed -i "/delete system.ntp/a \\
 sed -i '/add_list system.ntp.server=.time.cloudflare.com./d' package/base-files/files/bin/config_generate
 sed -i '/add_list system.ntp.server=.time1.google.com./d' package/base-files/files/bin/config_generate
 
-# 3. Set default LuCI language to Simplified Chinese (zh_Hans)
+# 3. Set default LuCI language to Simplified Chinese (zh_cn)
 if [ -d "package/emortal/default-settings/files" ]; then
-    sed -i 's/set luci.main.lang="auto"/set luci.main.lang="zh_Hans"/g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
-    sed -i 's/set luci.main.lang="zh_cn"/set luci.main.lang="zh_Hans"/g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
+    sed -i 's/set luci.main.lang="auto"/set luci.main.lang="zh_cn"/g' package/emortal/default-settings/files/99-default-settings 2>/dev/null || true
 fi
 mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-custom-settings
 uci -q batch << 'EOC'
-set luci.main.lang='zh_Hans'
+set luci.main.lang='zh_cn'
 set luci.main.mediaurlbase='/luci-static/argon'
 commit luci
 set system.@system[0].timezone='CST-8'
@@ -104,4 +103,14 @@ fi
 if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json" ]; then
     mkdir -p feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d 2>/dev/null || true
     cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d/luci-mod-status.json 2>/dev/null || true
+fi
+
+# 8. Adaptive PPE count in TurboACC (MT7981 = 1, MT7986 = 2)
+TURBOACC_UCI="package/mtk/applications/luci-app-turboacc-mtk/root/etc/uci-defaults/turboacc"
+if [ -f "$TURBOACC_UCI" ]; then
+    sed -i 's/"turboacc.config.fastpath_mh_eth_hnat_ppenum"="2"/"turboacc.config.fastpath_mh_eth_hnat_ppenum"="1"/g' "$TURBOACC_UCI" 2>/dev/null || true
+fi
+TURBOACC_JS="package/mtk/applications/luci-app-turboacc-mtk/htdocs/luci-static/resources/view/turboacc.js"
+if [ -f "$TURBOACC_JS" ]; then
+    sed -i 's/o.default = 2;/o.default = 1;/g' "$TURBOACC_JS" 2>/dev/null || true
 fi
