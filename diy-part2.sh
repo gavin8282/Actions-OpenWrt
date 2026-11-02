@@ -107,7 +107,6 @@ fi
 # 8. Adaptive PPE count in TurboACC (MT7981 = 1, MT7986 = 2)
 TURBOACC_UCI="package/mtk/applications/luci-app-turboacc-mtk/root/etc/uci-defaults/turboacc"
 if [ -f "$TURBOACC_UCI" ]; then
-    sed -i 's/"turboacc.config.fastpath_mh_eth_hnat_ppenum"="2"/"turboacc.config.fastpath_mh_eth_hnat_ppenum"="1"/g' "$TURBOACC_UCI" 2>/dev/null || true
 fi
 TURBOACC_JS="package/mtk/applications/luci-app-turboacc-mtk/htdocs/luci-static/resources/view/turboacc.js"
 if [ -f "$TURBOACC_JS" ]; then
