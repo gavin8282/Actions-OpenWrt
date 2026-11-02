@@ -105,9 +105,6 @@ if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mt
 fi
 
 # 8. Adaptive PPE count in TurboACC (MT7981 = 1, MT7986 = 2)
-TURBOACC_UCI="package/mtk/applications/luci-app-turboacc-mtk/root/etc/uci-defaults/turboacc"
-if [ -f "$TURBOACC_UCI" ]; then
-fi
 TURBOACC_JS="package/mtk/applications/luci-app-turboacc-mtk/htdocs/luci-static/resources/view/turboacc.js"
 if [ -f "$TURBOACC_JS" ]; then
     sed -i 's/o.default = 2;/o.default = 1;/g' "$TURBOACC_JS" 2>/dev/null || true
