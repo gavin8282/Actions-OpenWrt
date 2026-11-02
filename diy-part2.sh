@@ -114,3 +114,13 @@ TURBOACC_JS="package/mtk/applications/luci-app-turboacc-mtk/htdocs/luci-static/r
 if [ -f "$TURBOACC_JS" ]; then
     sed -i 's/o.default = 2;/o.default = 1;/g' "$TURBOACC_JS" 2>/dev/null || true
 fi
+
+# 9. Ensure dae eBPF stream parser kernel options for MTK Filogic
+for cfg_file in target/linux/mediatek/filogic/config-6.6; do
+    if [ -f "$cfg_file" ]; then
+        grep -q "CONFIG_BPF_STREAM_PARSER=y" "$cfg_file" || echo "CONFIG_BPF_STREAM_PARSER=y" >> "$cfg_file"
+        grep -q "CONFIG_STREAM_PARSER=y" "$cfg_file" || echo "CONFIG_STREAM_PARSER=y" >> "$cfg_file"
+        grep -q "CONFIG_NET_SOCK_MSG=y" "$cfg_file" || echo "CONFIG_NET_SOCK_MSG=y" >> "$cfg_file"
+        grep -q "CONFIG_CGROUP_BPF=y" "$cfg_file" || echo "CONFIG_CGROUP_BPF=y" >> "$cfg_file"
+    fi
+done
