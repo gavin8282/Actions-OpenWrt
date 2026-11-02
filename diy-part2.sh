@@ -116,7 +116,7 @@ if [ -f "$TURBOACC_JS" ]; then
 fi
 
 # 9. Ensure dae eBPF stream parser kernel options for MTK Filogic
-for cfg_file in target/linux/mediatek/filogic/config-6.6; do
+for cfg_file in target/linux/mediatek/filogic/config-6.6 target/linux/mediatek/filogic/config-6.12; do
     if [ -f "$cfg_file" ]; then
         grep -q "CONFIG_BPF_STREAM_PARSER=y" "$cfg_file" || echo "CONFIG_BPF_STREAM_PARSER=y" >> "$cfg_file"
         grep -q "CONFIG_STREAM_PARSER=y" "$cfg_file" || echo "CONFIG_STREAM_PARSER=y" >> "$cfg_file"
