@@ -31,7 +31,6 @@ mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-custom-settings
 uci -q batch << 'EOC'
 set luci.main.lang='zh_cn'
-set luci.main.mediaurlbase='/luci-static/argon'
 commit luci
 set system.@system[0].timezone='CST-8'
 set system.@system[0].zonename='Asia/Shanghai'
@@ -124,3 +123,6 @@ for cfg_file in target/linux/mediatek/filogic/config-6.6 target/linux/mediatek/f
         grep -q "CONFIG_CGROUP_BPF=y" "$cfg_file" || echo "CONFIG_CGROUP_BPF=y" >> "$cfg_file"
     fi
 done
+
+# 10. Strip USB & automount packages from non-USB Filogic devices
+sed -i 's/set luci.main.mediaurlbase=.*/set luci.main.mediaurlbase=\x27\/luci-static\/bootstrap\x27/' package/base-files/files/etc/uci-defaults/99-custom-settings 2>/dev/null || true
