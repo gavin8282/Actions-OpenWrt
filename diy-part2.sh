@@ -122,3 +122,10 @@ done
 
 # 10. Strip USB & automount packages from non-USB Filogic devices
 sed -i 's/set luci.main.mediaurlbase=.*/set luci.main.mediaurlbase=\x27\/luci-static\/bootstrap\x27/' package/base-files/files/etc/uci-defaults/99-custom-settings 2>/dev/null || true
+
+# 10. Fix rpcd-mod-luci cmake_minimum_required 3.31 on older host cmake
+for f in feeds/luci/libs/rpcd-mod-luci/src/CMakeLists.txt feeds/luci/libs/rpcd-mod-rrdns/src/CMakeLists.txt; do
+    if [ -f "$f" ]; then
+        sed -i 's/VERSION 3.31/VERSION 3.20/g' "$f" 2>/dev/null || true
+    fi
+done
