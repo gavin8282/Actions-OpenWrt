@@ -13,6 +13,7 @@ on:
           - 'gavin8282/g-openwrt:openwrt-25.12'
           - 'gavin8282/g-openwrt:openwrt-24.10'
           - 'gavin8282/g-openwrt:openwrt-24.10-new'
+          - 'gavin8282/g-openwrt:openwrt-21.02'
           - 'gavin8282/g-openwrt:25.12-mtk7981'
           - 'gavin8282/g-openwrt:24.10-mtk7981'
           - 'gavin8282/g-openwrt:21.02-mtk7981'
@@ -27,6 +28,7 @@ on:
         options:
           - 'configs/25.12-mtk7981_dae.config'
           - 'configs/24.10-mtk7981_dae.config'
+          - 'configs/21.02.7-ct3003-byst-mtwifi-cfg.config'
           - 'configs/x86_64_dae.config'
           - 'defconfig/mt7981-ax3000.config'
           - 'defconfig/mt7986-ax6000.config'
