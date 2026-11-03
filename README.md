@@ -44,7 +44,6 @@
 ├── configs/                         # 机型与架构配置文件 (.config)
 │   ├── 25.12-mtk7981_dae.config    # MT7981 全机型轻量配置 (dae eBPF + MTK 闭源驱动 + PPE)
 │   ├── 24.10-mtk7981_dae.config    # MT7981 24.10 分支轻量配置
-│   ├── 24.10-rax3000m_dae.config   # RAX3000M 24.10 专用配置
 │   ├── x86_64_dae.config           # x86_64 软路由配置 (含 BBR + dae eBPF)
 │   └── 21.02.7-*.config            # 21.02.7 历史经典机型配置
 ├── diy-part1.sh                     # Feeds 更新前自定义脚本
