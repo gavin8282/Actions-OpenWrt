@@ -12,6 +12,7 @@ on:
         options:
           - 'gavin8282/g-openwrt:openwrt-25.12'
           - 'gavin8282/g-openwrt:openwrt-24.10'
+          - 'gavin8282/g-openwrt:openwrt-24.10-new'
           - 'gavin8282/g-openwrt:25.12-mtk7981'
           - 'gavin8282/g-openwrt:24.10-mtk7981'
           - 'gavin8282/g-openwrt:21.02-mtk7981'
