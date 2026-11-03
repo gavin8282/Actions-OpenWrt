@@ -17,11 +17,13 @@ sed -i 's/192.168.1.1/172.16.19.254/g' package/base-files/files/bin/config_gener
 sed -i "s/timezone='GMT0'/timezone='CST-8'/g" package/base-files/files/bin/config_generate
 sed -i "s/zonename='UTC'/zonename='Asia\/Shanghai'/g" package/base-files/files/bin/config_generate
 
-# 2. Add Alibaba & Apple NTP servers
-sed -i "/delete system.ntp/a \\
+# 2. Add Alibaba & Apple NTP servers (only if not already present in config_generate)
+if ! grep -q "ntp.aliyun.com" package/base-files/files/bin/config_generate 2>/dev/null; then
+    sed -i "/delete system.ntp/a \\
 \\t\\tset system.ntp='timeserver'\\n\\t\\tset system.ntp.enabled='1'\\n\\t\\tset system.ntp.enable_server='0'\\n\\t\\tadd_list system.ntp.server='ntp.aliyun.com'\\n\\t\\tadd_list system.ntp.server='time.apple.com'\\n\\t\\tadd_list system.ntp.server='time1.cloud.tencent.com'\\n\\t\\tadd_list system.ntp.server='pool.ntp.org'" package/base-files/files/bin/config_generate
-sed -i '/add_list system.ntp.server=.time.cloudflare.com./d' package/base-files/files/bin/config_generate
-sed -i '/add_list system.ntp.server=.time1.google.com./d' package/base-files/files/bin/config_generate
+fi
+sed -i '/add_list system.ntp.server=.time.cloudflare.com./d' package/base-files/files/bin/config_generate 2>/dev/null || true
+sed -i '/add_list system.ntp.server=.time1.google.com./d' package/base-files/files/bin/config_generate 2>/dev/null || true
 
 # 3. Set default LuCI language to Simplified Chinese (zh_cn)
 if [ -d "package/emortal/default-settings/files" ]; then
