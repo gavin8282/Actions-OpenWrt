@@ -249,6 +249,17 @@ jobs:
           echo "🎯 正在应用配置文件: $CONFIG_PATH"
           cp -f "$CONFIG_PATH" .config
 
+          # 针对 openwrt-24.10-new 分支，智能启用 mt_wifi 7.6.7.3 & l1parser，保持基础配置文件对所有24.10分支纯净兼容
+          if [ "${{ steps.parse_repo.outputs.branch }}" = "openwrt-24.10-new" ]; then
+              echo "⚙️ 检测到 openwrt-24.10-new 分支，智能启用 7.6.7.3 驱动与 l1parser 组件..."
+              sed -i 's/^CONFIG_PACKAGE_mtwifi-cfg=y/# CONFIG_PACKAGE_mtwifi-cfg is not set/' .config
+              grep -q "CONFIG_PACKAGE_mtwifi-cfg-ucode=y" .config || echo "CONFIG_PACKAGE_mtwifi-cfg-ucode=y" >> .config
+              grep -q "CONFIG_PACKAGE_l1util=y" .config || echo "CONFIG_PACKAGE_l1util=y" >> .config
+              grep -q "CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y" .config || echo "CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=y" >> .config
+              grep -q "CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7981" .config || echo 'CONFIG_MTK_MT_WIFI_FIRMWARE_PATH_MT7981="mt7981-fw-20260601"' >> .config
+              grep -q "CONFIG_MTK_MT_WIFI_MT7981_20260601=y" .config || echo "CONFIG_MTK_MT_WIFI_MT7981_20260601=y" >> .config
+          fi
+
           SELECTED_PRESET="${{ inputs.device_preset }}"
           PRESET_DEV="${SELECTED_PRESET%% #*}"
 
