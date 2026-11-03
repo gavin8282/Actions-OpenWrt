@@ -79,6 +79,11 @@ net.core.netdev_max_backlog = $BACKLOG
 net.core.somaxconn = $SOMAXCONN
 net.core.bpf_jit_limit = $BPF_LIMIT
 vm.min_free_kbytes = $MIN_FREE
+vm.vfs_cache_pressure = 50
+vm.swappiness = 10
+net.ipv4.neigh.default.gc_thresh1 = 1024
+net.ipv4.neigh.default.gc_thresh2 = 2048
+net.ipv4.neigh.default.gc_thresh3 = 4096
 SYSCTL_EOF
 
 sysctl -p /etc/sysctl.d/98-adaptive-tuning.conf 2>/dev/null || true
@@ -86,8 +91,9 @@ exit 0
 EOT
 chmod +x package/base-files/files/etc/uci-defaults/98-adaptive-tuning
 
-# 5. Pre-install MTK wireless view into LuCI network module to guarantee LuCI Wi-Fi management works out-of-the-box
-if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js" ]; then
+# 5. Pre-install MTK wireless view into LuCI network module to guarantee LuCI Wi-Fi management works out-of-the-box (MTK Filogic targets only)
+if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js" ] && \
+   grep -q "CONFIG_TARGET_mediatek=y" .config 2>/dev/null; then
     mkdir -p feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network 2>/dev/null || true
     cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js 2>/dev/null || true
 fi
@@ -98,8 +104,9 @@ if [ -f "$LUCI_NET_JS" ] && ! grep -sq 'ra\[xiyez\]' "$LUCI_NET_JS"; then
     sed -i 's#/\^wlan\\d+/,#/\^wlan\\d+/,/^ra[xiyez]?\\d+/,/^apcli[xiyez]?\\d+/,#' "$LUCI_NET_JS" 2>/dev/null || true
 fi
 
-# 7. Pre-patch LuCI status menu to display MTK closed-source wireless in realtime graphs
-if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json" ]; then
+# 7. Pre-patch LuCI status menu to display MTK closed-source wireless in realtime graphs (MTK Filogic targets only)
+if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json" ] && \
+   grep -q "CONFIG_TARGET_mediatek=y" .config 2>/dev/null; then
     mkdir -p feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d 2>/dev/null || true
     cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d/luci-mod-status.json 2>/dev/null || true
 fi
@@ -119,9 +126,6 @@ for cfg_file in target/linux/mediatek/filogic/config-6.6 target/linux/mediatek/f
         grep -q "CONFIG_CGROUP_BPF=y" "$cfg_file" || echo "CONFIG_CGROUP_BPF=y" >> "$cfg_file"
     fi
 done
-
-# 10. Strip USB & automount packages from non-USB Filogic devices
-sed -i 's/set luci.main.mediaurlbase=.*/set luci.main.mediaurlbase=\x27\/luci-static\/bootstrap\x27/' package/base-files/files/etc/uci-defaults/99-custom-settings 2>/dev/null || true
 
 # 10. Fix rpcd-mod-luci cmake_minimum_required 3.31 on older host cmake
 for f in feeds/luci/libs/rpcd-mod-luci/src/CMakeLists.txt feeds/luci/libs/rpcd-mod-rrdns/src/CMakeLists.txt; do

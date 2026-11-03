@@ -97,7 +97,6 @@ jobs:
         id: parse_repo
         run: |
           INPUT="${{ inputs.source_repo }}"
-          REPO="${INPUT%:* Kirchen}"
           REPO="${INPUT%:*}"
           BRANCH="${INPUT##*:}"
           KEY=$(echo "$REPO" | tr '/' '_')
@@ -280,6 +279,9 @@ jobs:
                       # 智能适配 24.10 / 25.12 跨分支命名规则
                       if [ "$clean_dev" = "cmcc_rax3000m-emmc" ] && grep -q "_DEVICE_cmcc_rax3000m-emmc-mtk" .config; then
                           clean_dev="cmcc_rax3000m-emmc-mtk"
+                      elif [ "$clean_dev" = "cmcc_rax3000m-emmc" ] && (grep -q "_DEVICE_cmcc_rax3000m=" .config || grep -q "_DEVICE_cmcc_rax3000m " .config); then
+                          # 适配 25.12 整合版：cmcc_rax3000m 同时产出 NAND 与 eMMC 镜像
+                          clean_dev="cmcc_rax3000m"
                       elif [ "$clean_dev" = "cmcc_a10-stock" ] && grep -qE "_DEVICE_cmcc_a10(=|[[:space:]])" .config; then
                           clean_dev="cmcc_a10"
                       elif [ "$clean_dev" = "qihoo_360t7" ] && grep -q "CONFIG_TARGET_DEVICE_.*_DEVICE_mt7981-360-t7-108M" .config; then
