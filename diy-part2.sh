@@ -94,21 +94,29 @@ EOT
 chmod +x package/base-files/files/etc/uci-defaults/98-adaptive-tuning
 
 # 5. Pre-install MTK wireless view into LuCI network module to guarantee LuCI Wi-Fi management works out-of-the-box (MTK Filogic targets only)
-if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js" ] && \
-   grep -q "CONFIG_TARGET_mediatek=y" .config 2>/dev/null; then
+if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js" ]; then
     mkdir -p feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network 2>/dev/null || true
     cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js 2>/dev/null || true
 fi
 
-# 6. Pre-patch LuCI network.js to recognize MTK raX/apcliX wireless interfaces at build time
-LUCI_NET_JS="feeds/luci/modules/luci-base/htdocs/luci-static/resources/network.js"
-if [ -f "$LUCI_NET_JS" ] && ! grep -sq 'ra\[xiyez\]' "$LUCI_NET_JS"; then
-    sed -i 's#/\^wlan\\d+/,#/\^wlan\\d+/,/^ra[xiyez]?\\d+/,/^apcli[xiyez]?\\d+/,#' "$LUCI_NET_JS" 2>/dev/null || true
+# 6. Pre-patch LuCI network.js to recognize MTK raX/apcliX wireless interfaces and runtime BSSID
+for LUCI_NET_JS in feeds/luci/modules/luci-base/htdocs/luci-static/resources/network.js feeds/luci/modules/luci-base/htdocs/luci-static/resources/tools/network.js; do
+    if [ -f "$LUCI_NET_JS" ]; then
+        if ! grep -sq 'ra\[xiyez\]' "$LUCI_NET_JS"; then
+            sed -i 's#/\^wlan[^,]*,#& /^ra[xiyez]?[0-9]+/, /^apcli[xiyez]?[0-9]+/,#' "$LUCI_NET_JS" 2>/dev/null || true
+        fi
+        sed -i "s#return this.ubus('net', 'config', 'bssid')#return this.ubus('net', 'iwinfo', 'bssid') || this.ubus('net', 'config', 'bssid') || this.ubus('net', 'bssid')#" "$LUCI_NET_JS" 2>/dev/null || true
+    fi
+done
+
+# 7. Pre-patch LuCI status overview (60_wifi.js) for robust association check
+LUCI_STATUS_WIFI="feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/60_wifi.js"
+if [ -f "$LUCI_STATUS_WIFI" ]; then
+    sed -i "s#const is_assoc = (net.getBSSID() != '00:00:00:00:00:00' && net.getChannel() && !net.isDisabled());#const is_assoc = ((net.getActiveBSSID() || net.getBSSID()) != '00:00:00:00:00:00' && (net.getChannel() || net.getFrequency()) && !net.isDisabled());#" "$LUCI_STATUS_WIFI" 2>/dev/null || true
 fi
 
-# 7. Pre-patch LuCI status menu to display MTK closed-source wireless in realtime graphs (MTK Filogic targets only)
-if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json" ] && \
-   grep -q "CONFIG_TARGET_mediatek=y" .config 2>/dev/null; then
+# 8. Pre-patch LuCI status menu to display MTK closed-source wireless in realtime graphs (MTK Filogic targets only)
+if [ -f "package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json" ]; then
     mkdir -p feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d 2>/dev/null || true
     cp -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/luci-mod-status.json feeds/luci/modules/luci-mod-status/root/usr/share/luci/menu.d/luci-mod-status.json 2>/dev/null || true
 fi
