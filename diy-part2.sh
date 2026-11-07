@@ -41,6 +41,19 @@ set dropbear.@dropbear[0].PasswordAuth='on'
 set dropbear.@dropbear[0].RootPasswordAuth='on'
 commit dropbear
 EOC
+
+if [ -f /etc/config/wireless ]; then
+    for sec in $(uci show wireless 2>/dev/null | grep -E "=wifi-device|=wifi-iface" | cut -d'.' -f2 | cut -d'=' -f1); do
+        if [ "$(uci -q get wireless.$sec.disabled)" = "1" ]; then
+            hwtype="$(uci -q get wireless.$sec.type)"
+            dev="$(uci -q get wireless.$sec.device)"
+            if [ "$hwtype" = "mtwifi" ] || [ -n "$dev" ]; then
+                uci -q delete wireless.$sec.disabled
+            fi
+        fi
+    done
+    uci -q commit wireless
+fi
 exit 0
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-custom-settings
@@ -106,6 +119,9 @@ for LUCI_NET_JS in feeds/luci/modules/luci-base/htdocs/luci-static/resources/net
             sed -i 's#/\^wlan[^,]*,#& /^ra[xiyez]?[0-9]+/, /^apcli[xiyez]?[0-9]+/,#' "$LUCI_NET_JS" 2>/dev/null || true
         fi
         sed -i "s#return this.ubus('net', 'config', 'bssid')#return this.ubus('net', 'iwinfo', 'bssid') || this.ubus('net', 'config', 'bssid') || this.ubus('net', 'bssid')#" "$LUCI_NET_JS" 2>/dev/null || true
+        sed -i "s#return this.ubus('dev', 'disabled') || this.get('disabled') == '1';#const _devn = this.getWifiDeviceName ? this.getWifiDeviceName() : this.getName(); if (uci.get('wireless', _devn, 'type') == 'mtwifi') return (this.get('disabled') == '1' || (this.getWifiDeviceName && uci.get('wireless', _devn, 'disabled') == '1')); return this.ubus('dev', 'disabled') || this.get('disabled') == '1';#g" "$LUCI_NET_JS" 2>/dev/null || true
+        sed -i "s#if (L.isObject(_state.radios\[this.sid\]))#if (this.get('type') == 'mtwifi') return (this.get('disabled') != '1'); if (L.isObject(_state.radios\[this.sid\]))#" "$LUCI_NET_JS" 2>/dev/null || true
+        sed -i "s#const device = this.getDevice();#if (uci.get('wireless', this.getWifiDeviceName(), 'type') == 'mtwifi') return (this.get('disabled') != '1' && uci.get('wireless', this.getWifiDeviceName(), 'disabled') != '1'); const device = this.getDevice();#" "$LUCI_NET_JS" 2>/dev/null || true
     fi
 done
 
